@@ -54,8 +54,8 @@ test('manual workflow, traceability, focused prompt, map, backup and persistence
   expect(errors).toEqual([]);
 });
 
-test('mobile layout, independent project and invalid restoration',async({page})=>{
-  await page.setViewportSize({width:390,height:844});
+test('PC layout, independent project and invalid restoration',async({page})=>{
+  await page.setViewportSize({width:1280,height:800});
   await page.goto('/');
   await page.getByRole('button',{name:'Crear mi proyecto'}).click();
   await page.getByLabel('Nombre del proyecto').fill('Trabajo de campo');
@@ -67,7 +67,6 @@ test('mobile layout, independent project and invalid restoration',async({page})=
   await page.getByRole('button',{name:'Importar texto'}).click();
   await expect(page.locator('#transcript')).toContainText('Otro párrafo con contexto.');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
-  if(process.env.TRAMA_SCREENSHOTS) await page.screenshot({path:join(process.env.TRAMA_SCREENSHOTS,'trama-mobile.png'),fullPage:true});
   const chooser=page.waitForEvent('filechooser');
   await page.getByRole('button',{name:'Restaurar respaldo',exact:true}).click();
   await (await chooser).setFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from('{"name":"bad"}')});

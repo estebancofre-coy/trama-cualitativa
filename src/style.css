@@ -10,7 +10,7 @@
   --paper: #fff;
 }
 * { box-sizing: border-box; }
-body { margin: 0; }
+body { margin: 0; min-width: 1100px; }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { min-height: 38px; padding: 8px 13px; border: 1px solid #bacbd2; border-radius: 5px; background: white; color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 600; transition: background .15s ease; }
@@ -209,51 +209,4 @@ dialog footer { border-top: 1px solid var(--line); display: flex; justify-conten
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media(min-width:1600px) { .reading-layout { grid-template-columns: 210px minmax(400px,1fr) 290px; } .transcript { padding: 30px; } .paragraph-row p { font-size: 16px; } }
 @media(max-width:1250px) { .shell { grid-template-columns: 205px minmax(0,1fr); } .rail { padding-left: 12px; padding-right: 12px; } .reading-layout { grid-template-columns: 145px minmax(230px,1fr); } .inspector { grid-column: 1/-1; border-top: 1px solid var(--line); border-left: 0; } .inspector form { grid-template-columns: 1fr 1fr; align-items: start; } .inspector fieldset { grid-row: span 2; } .page-heading { align-items: start; flex-direction: column; } .book-layout { grid-template-columns: 1fr; } .category-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 15px; } .category-list>h3 { grid-column: 1/-1; margin-bottom: 0; } .category-entry { padding-bottom: 0; } .prompt-layout { grid-template-columns: 1fr; } }
-@media(max-width:760px) {
-  .shell { display: block; }
-  .rail { position: static; height: auto; padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; overflow: visible; }
-  .rail .brand { margin: 0; font-size: 23px; }
-  .rail .brand>span { font-size: 33px; }
-  .rail .brand small { font-size: 10px; margin-top: 4px; }
-  .project-switch { padding: 0; }
-  .new-project { margin: 0; grid-column: 2; }
-  nav { grid-column: 1/-1; display: flex; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
-  nav button { white-space: nowrap; padding: 10px 12px; font-size: 12px; }
-  nav button>span,nav small { display: none; }
-  .rail-bottom { grid-column: 1/-1; margin: 0; padding: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .rail-bottom .rail-note { display: none; }
-  .rail-bottom #save-state { flex-basis: 100%; margin: 0; }
-  .rail-bottom button { width: auto; margin: 0; padding: 5px 8px; min-height: 30px; font-size: 11px; }
-  .topbar { padding: 20px; }
-  .topbar h1 { font-size: 19px; }
-  .page-heading { padding: 22px 20px; gap: 15px; }
-  #workspace { padding: 0 16px 25px; }
-  .reading-layout { display: block; }
-  .document-list { display: flex; gap: 10px; overflow-x: auto; padding: 12px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .document-list h3 { display: none; }
-  .document-item { min-width: 160px; max-width: 220px; margin: 0; }
-  .source-toolbar { padding: 15px; }
-  .transcript { padding: 20px 14px; max-height: 60vh; }
-  .inspector { padding: 20px; }
-  .inspector form { display: grid; grid-template-columns: 1fr; }
-  .checklist { max-height: 180px; }
-  .workspace-footer { padding: 17px; display: block; line-height: 1.8; }
-  .workspace-footer span { display: block; }
-  .filterbar { flex-direction: column; align-items: stretch; gap: 12px; padding: 15px; }
-  .filterbar label { max-width: none; }
-  .filterbar>span { margin: 0; padding: 0; }
-  .quote-card { padding: 18px; }
-  .quote-card header,.quote-card footer { flex-direction: column; align-items: start; }
-  .quote-card blockquote { font-size: 14px; }
-  .form-grid { grid-template-columns: 1fr; }
-  .prompt-config,.prompt-output { padding: 18px; }
-  .map-toolbar { display: block; }
-  .map-toolbar p { margin-top: 8px; max-width: none; }
-  .relationship-list article { flex-wrap: wrap; }
-  .relationship-list article>div { flex-basis: 100%; }
-  .history-list article { grid-template-columns: 1fr; gap: 7px; padding: 16px; }
-  .welcome { padding: 35px 22px; }
-  .welcome-grid { grid-template-columns: 1fr; gap: 30px; margin-top: 40px; }
-  .privacy-strip { margin-top: 35px; }
-}
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; } }

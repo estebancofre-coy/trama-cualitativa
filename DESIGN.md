@@ -12,7 +12,7 @@ Interfaz Operate: mesa de análisis tipo ATLAS.ti, elegida para priorizar lectur
 
 ## Composición
 
-Rail de proyectos y navegación, encabezado de contexto, herramientas por vista y espacio de trabajo. El lector separa corpus, transcripción y codificación. En pantallas pequeñas se apilan las superficies y la navegación es horizontal.
+Rail de proyectos y navegación, encabezado de contexto, herramientas por vista y espacio de trabajo. El lector separa corpus, transcripción y codificación. Uso exclusivo en PC, con ancho mínimo de 1100 píxeles; se conserva el ajuste para ventanas de portátiles, sin diseño móvil.
 
 ## Estados e interacción
 

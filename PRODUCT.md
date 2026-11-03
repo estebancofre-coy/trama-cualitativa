@@ -10,6 +10,8 @@ web
 
 Uso individual de investigación cualitativa de entrevistas en español.
 
+Uso exclusivo en PC, con navegador de escritorio, ratón y teclado. No desarrollar funciones ni adaptaciones móviles.
+
 ## Product Purpose
 
 Codificar manualmente y conservar trazabilidad entre categorías, códigos, citas y documentos. Preparar solicitudes acotadas para chats externos sin API integrada.

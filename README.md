@@ -2,6 +2,8 @@
 
 Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada para uso individual, con trazabilidad entre categorías, códigos, citas y entrevistas.
 
+**Solo para PC:** se usa desde un navegador de escritorio, con ratón y teclado. Ancho de ventana mínimo: 1100 píxeles. No incluye interfaz ni funciones específicas para móviles.
+
 ## Usar ahora
 
 **[Abrir Trama cualitativa](https://estebancofre-coy.github.io/trama-cualitativa/)** · No requiere instalar nada ni contratar una API.
