@@ -1,0 +1,21 @@
+{
+  "name": "trama-cualitativa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/domain.test.js",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "mammoth": "^1.11.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "jszip": "^3.10.2",
+    "vite": "^6.4.0"
+  }
+}
