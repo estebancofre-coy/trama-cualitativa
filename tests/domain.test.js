@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, csv, escapeHTML } from '../src/domain.js';
+import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
 
 function config(p, overrides = {}) {
   return { question:'¿Cómo coordinan?',mode:'Inductiva',operation:'Codificar',scope:'quotes',budget:5,codeIds:p.codes.map(c=>c.id),quoteIds:[p.quotes[0].id],documentIds:[], ...overrides };
@@ -88,4 +88,39 @@ test('CSV export prevents formula execution and HTML escapes untrusted content',
   assert.match(output,/'=HYPERLINK/);
   assert.match(output,/' \+SUM/);
   assert.equal(escapeHTML('<script>"&'), '&lt;script&gt;&quot;&amp;');
+});
+test('research bank scopes selected questions without including the rest or broad project goal',()=>{
+  const p=demoProject();
+  p.question='CONTEXTO GENERAL QUE NO SE DEBE ENVIAR';
+  updateResearchBank(p,'¿Qué barreras existen?\nPREGUNTA EXCLUIDA DEL ANÁLISIS','Caracterizar apoyos');
+  const question=p.researchQuestions[0],objective=p.researchQuestions[2];
+  const text=promptText(p,config(p,{question:'',researchQuestionIds:[question.id,objective.id]}));
+  assert.ok(text.includes(question.text));
+  assert.ok(text.includes(objective.text));
+  assert.ok(!text.includes('PREGUNTA EXCLUIDA'));
+  assert.ok(!text.includes('CONTEXTO GENERAL'));
+  assert.match(text,/GLOBAL para toda esta solicitud/);
+  assert.match(text,/separa los hallazgos por sus IDs/);
+  assert.throws(()=>promptText(p,config(p,{researchQuestionIds:['missing']})),/no está disponible/);
+});
+test('research bank edits archive old definitions and preserve citation references',()=>{
+  const p=demoProject();
+  updateResearchBank(p,'Pregunta original\nPregunta estable','');
+  const original=p.researchQuestions[0],stable=p.researchQuestions[1];
+  const q=p.quotes[0];
+  addQuote(p,q.documentId,q.start,q.end,q.codeIds,'',[original.id]);
+  updateResearchBank(p,'Pregunta reformulada\nPregunta estable','Objetivo nuevo');
+  assert.equal(p.researchQuestions.find(r=>r.id===original.id).archived,true);
+  assert.equal(p.researchQuestions.find(r=>r.text==='Pregunta estable').id,stable.id);
+  assert.ok(q.researchQuestionIds.includes(original.id));
+  validateProject(p);
+  assert.throws(()=>promptText(p,config(p,{researchQuestionIds:[original.id]})),/no está disponible/);
+  assert.throws(()=>updateResearchBank(p,'Duplicada\nduplicada',''),/duplicados/);
+});
+test('legacy backups without research bank still validate and can be extended',()=>{
+  const p=demoProject();delete p.researchQuestions;
+  for(const q of p.quotes) delete q.researchQuestionIds;
+  validateProject(p);
+  updateResearchBank(p,'Pregunta nueva','');
+  validateProject(p);
 });

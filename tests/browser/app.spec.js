@@ -29,7 +29,7 @@ test('manual workflow, traceability, focused prompt, map, backup and persistence
   await page.getByRole('button',{name:'Ver en contexto ↗'}).last().click();
   await expect(page.locator('#selection-preview blockquote')).toContainText('Cuando cambia el equipo');
   await page.getByRole('button',{name:'Prompts sin API',exact:false}).first().click();
-  await page.getByLabel('Pregunta única de esta solicitud').fill('¿Qué sucede cuando cambia el equipo?');
+  await page.getByLabel('Consulta focalizada (opcional si seleccionas preguntas)').fill('¿Qué sucede cuando cambia el equipo?');
   await page.getByRole('combobox',{name:'Operación',exact:true}).selectOption('Proponer subcódigos');
   await page.locator('#scope-quotes input[type=checkbox]').last().check();
   await page.getByRole('button',{name:'Preparar prompt y guardar solicitud'}).click();

@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "build:google": "node scripts/build-apps-script.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/domain.test.js",
-    "test:e2e": "playwright test"
+    "test": "node --test tests/domain.test.js tests/cloud.test.js",
+    "test:e2e": "npm run build:google && playwright test"
   },
   "dependencies": {
     "mammoth": "^1.11.0"

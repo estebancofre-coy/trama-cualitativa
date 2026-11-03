@@ -8,6 +8,8 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 
 **[Abrir Trama cualitativa](https://estebancofre-coy.github.io/trama-cualitativa/)** · No requiere instalar nada ni contratar una API.
 
+La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, versiones y Sheets**, instala la variante Apps Script siguiendo [Instalar Trama en Google](docs/INSTALAR-GOOGLE.md). El acceso es exclusivo de la cuenta propietaria; no se conecta GitHub Pages a un endpoint público.
+
 1. Crea un proyecto o explora el ejemplo ficticio.
 2. Importa DOCX / TXT UTF-8 o pega una entrevista.
 3. Crea códigos con definiciones y criterios, categorías y códigos padres.
@@ -20,6 +22,7 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 ## Privacidad y almacenamiento
 
 - Los proyectos se almacenan en IndexedDB, en este navegador y dirección web.
+- En la instalación privada de Apps Script, Drive es el almacenamiento principal. IndexedDB conserva intentos pendientes y una copia de la última confirmación; Sheets contiene índices regenerables a petición. Ningún fallo remoto activa silenciosamente el modo local.
 - No hay registro de usuario, servidor de entrevistas, analítica, telemetría ni llamadas a IA.
 - El hosting recibe las solicitudes normales de acceso al sitio. Las dependencias se empaquetan con la aplicación, sin CDN en tiempo de ejecución.
 - No se sincronizan dispositivos. El modo privado, borrar datos del sitio o perder el equipo puede eliminar los proyectos. El navegador también puede desalojar almacenamiento bajo presión.
@@ -29,13 +32,15 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 
 ## Prompts focalizados
 
-Cada solicitud utiliza una única pregunta y uno de estos alcances:
+En **Ajustes** registra el banco de preguntas y objetivos, uno por línea. Cada solicitud incluye solo los elementos que selecciones, con una consulta focalizada opcional, y uno de estos alcances:
 
 - Fragmento seleccionado en el lector.
 - Documentos seleccionados expresamente, sin selección automática del corpus.
 - Citas previamente codificadas, seleccionadas individualmente.
 
 Las operaciones de subcodificación, categorización y comparación exigen el alcance de citas. Se incluye solo el libro de códigos elegido. La modalidad deductiva exige códigos existentes. El máximo de propuestas nuevas es un presupuesto de revisión, no una cuota que llenar ni un límite metodológico. Cada paquete se archiva íntegro para conservar el alcance exacto.
+
+Seleccionar varias preguntas pide resultados separados por ID y conserva un presupuesto global de propuestas, sin duplicar códigos por pregunta ni analizar automáticamente todo el banco. Las citas manuales también pueden vincularse a preguntas u objetivos y filtrarse por ellos; esos vínculos se exportan en CSV e insertos HTML. Quitar o reformular un elemento archiva su versión anterior para no romper referencias. Los respaldos anteriores, sin banco, siguen siendo compatibles.
 
 La app no recibe ni aplica respuestas de IA automáticamente: revisa las sugerencias y registra manualmente las decisiones. Para proyectos de chat nuevos, copia solo lo necesario; un chat largo puede reprocesar su historial.
 
@@ -64,6 +69,7 @@ npm run dev
 ```powershell
 npm test
 npm run build
+npm run build:google
 npx playwright install chromium
 npm run test:e2e
 ```
@@ -75,5 +81,7 @@ El workflow `.github/workflows/pages.yml` prueba, compila y publica únicamente 
 ## Límites
 
 Primera versión individual: sin edición colaborativa, sincronización, cifrado local, deshacer global, audio, video, OCR, PDF ni importación de proyectos propietarios de ATLAS.ti. Los mapas permiten relaciones manuales y arrastre; no calculan causalidad ni hacen inferencias automáticas. Los nombres extensos se abrevian visualmente en los nodos, pero se conservan completos en el libro. Conviene conservar los originales fuera de la app y dividir proyectos muy grandes.
+
+La variante Google permite abrir el proyecto desde distintos PC con la misma cuenta y detecta conflictos de revisión, pero no combina ediciones concurrentes. Cada guardado crea un JSON inmutable en Drive; un puntero en la hoja Proyectos identifica la versión vigente. Las pestañas de índices no son una base transaccional ni el lugar para editar el análisis.
 
 No está afiliada a ATLAS.ti.

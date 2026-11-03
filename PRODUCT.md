@@ -20,9 +20,13 @@ Codificar manualmente y conservar trazabilidad entre categorías, códigos, cita
 
 Repositorio independiente y público, publicado en GitHub Pages con autorización. Los documentos no se publican: los proyectos permanecen en el navegador, con respaldos descargables y sin sincronización entre dispositivos.
 
+Variante privada aprobada: interfaz y backend en Apps Script, acceso exclusivo a la cuenta propietaria, Drive para originales y versiones de proyectos, Sheets para índices consultables. Requiere autorización y despliegue por el usuario en Google. La variante pública sigue siendo local.
+
 ## Capabilities and Constraints
 
 Proyectos, entrevistas TXT y DOCX, selección manual, libro de códigos inductivo y deductivo, categorías, subcódigos, memos, insertos y mapas de relaciones. Prompts por pregunta y selección explícita de documentos, fragmentos o citas previamente codificadas. Sin recodificación automática y sin llamadas a IA.
+
+Banco completo de preguntas y objetivos por proyecto, con selección de uno o varios elementos por solicitud y vínculos opcionales en la codificación manual. No se incluye automáticamente todo el banco ni todo el corpus.
 
 ## Brand Commitments
 

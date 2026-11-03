@@ -1,0 +1,40 @@
+import { test, expect } from '@playwright/test';
+
+test('select research questions and objectives independently of selected corpus and link manual coding',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
+  await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+  await page.getByLabel('Banco de preguntas (una por línea)').fill('¿Cómo coordinan los equipos?\n¿Qué barreras existen?\nPREGUNTA QUE NO SE INCLUYE');
+  await page.getByLabel('Banco de objetivos (uno por línea)').fill('Caracterizar apoyos');
+  await page.getByRole('button',{name:'Guardar ajustes'}).click();
+  await expect(page.locator('#dialog')).not.toBeVisible();
+  await page.locator('#transcript p').nth(1).evaluate(p=>{
+    const range=document.createRange();range.selectNodeContents(p);
+    const selected=window.getSelection();selected.removeAllRanges();selected.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+  });
+  await page.locator('#coding-form input[name=codeIds]').first().check();
+  await page.locator('#coding-form').getByText('Pregunta: ¿Cómo coordinan los equipos?',{exact:true}).click();
+  await page.getByRole('button',{name:'Guardar cita codificada'}).click();
+  await page.getByRole('button',{name:'Citas e insertos',exact:false}).first().click();
+  await page.getByRole('combobox',{name:'Pregunta / objetivo',exact:true}).selectOption({label:'¿Cómo coordinan los equipos?'});
+  await expect(page.locator('.quote-card')).toHaveCount(1);
+  await expect(page.locator('.quote-card')).toContainText('Cuando conocemos');
+  await page.getByRole('button',{name:'Prompts sin API',exact:true}).click();
+  await page.locator('#prompt-form').getByText('Pregunta: ¿Cómo coordinan los equipos?',{exact:true}).click();
+  await page.locator('#prompt-form').getByText('Objetivo: Caracterizar apoyos',{exact:true}).click();
+  await page.getByRole('combobox',{name:'Material autorizado',exact:true}).selectOption('quotes');
+  await page.locator('#scope-quotes input[name=quoteIds]').first().check();
+  await page.getByRole('button',{name:'Preparar prompt y guardar solicitud'}).click();
+  await expect(page.locator('#prompt-output')).toHaveValue(/¿Cómo coordinan los equipos\?/);
+  const text=await page.locator('#prompt-output').inputValue();
+  expect(text).toContain('¿Cómo coordinan los equipos?');
+  expect(text).toContain('Caracterizar apoyos');
+  expect(text).not.toContain('¿Qué barreras existen?');
+  expect(text).not.toContain('PREGUNTA QUE NO SE INCLUYE');
+  expect(text).not.toContain('Cuando cambia el equipo');
+  expect(text).toContain('GLOBAL para toda esta solicitud');
+  await page.reload();
+  await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+  await expect(page.getByLabel('Banco de preguntas (una por línea)')).toContainText('PREGUNTA QUE NO SE INCLUYE');
+});
