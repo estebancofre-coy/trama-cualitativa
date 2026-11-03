@@ -221,7 +221,8 @@ dialog footer { border-top: 1px solid var(--line); display: flex; justify-conten
   nav button { white-space: nowrap; padding: 10px 12px; font-size: 12px; }
   nav button>span,nav small { display: none; }
   .rail-bottom { grid-column: 1/-1; margin: 0; padding: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .rail-bottom .rail-note,.rail-bottom>p { display: none; }
+  .rail-bottom .rail-note { display: none; }
+  .rail-bottom #save-state { flex-basis: 100%; margin: 0; }
   .rail-bottom button { width: auto; margin: 0; padding: 5px 8px; min-height: 30px; font-size: 11px; }
   .topbar { padding: 20px; }
   .topbar h1 { font-size: 19px; }

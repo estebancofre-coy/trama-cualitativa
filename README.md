@@ -4,7 +4,7 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 
 ## Usar ahora
 
-La aplicación se publica con GitHub Pages: consulta la URL del despliegue en **Settings → Pages** o en el entorno **github-pages** de este repositorio.
+**[Abrir Trama cualitativa](https://estebancofre-coy.github.io/trama-cualitativa/)** · No requiere instalar nada ni contratar una API.
 
 1. Crea un proyecto o explora el ejemplo ficticio.
 2. Importa DOCX / TXT UTF-8 o pega una entrevista.

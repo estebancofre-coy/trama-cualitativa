@@ -142,6 +142,7 @@ test('relationship creation, evidence retrieval and node positions persist',asyn
   await page.mouse.move(box.x+50,box.y+40);
   await page.mouse.down();await page.mouse.move(box.x+100,box.y+100,{steps:5});await page.mouse.up();
   await expect(page.locator('.map-node').first()).not.toHaveAttribute('transform',before);
+  await expect(page.locator('#save-state')).toHaveText('Guardado en este navegador');
   const moved=await page.locator('.map-node').first().getAttribute('transform');
   await page.reload();
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();

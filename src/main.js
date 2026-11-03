@@ -38,6 +38,7 @@ function report(error) {
 async function mutate(action) {
   if (saving) throw new Error('Espera a que termine el guardado anterior.');
   saving = true;
+  updateSaveState();
   const next = structuredClone(current);
   try {
     action(next);
@@ -48,7 +49,11 @@ async function mutate(action) {
     render();
   } catch (error) {
     throw new Error(`No se guardaron los cambios: ${error.message}`, { cause: error });
-  } finally { saving = false; }
+  } finally { saving = false; updateSaveState(); }
+}
+function updateSaveState() {
+  const status=document.querySelector('#save-state');
+  if(status) status.innerHTML=`<span class="local-dot"></span> ${saving ? 'Guardando cambios…' : 'Guardado en este navegador'}`;
 }
 function download(name, content, type = 'text/plain;charset=utf-8') {
   const url = URL.createObjectURL(new Blob([content], { type }));
@@ -81,7 +86,7 @@ function render() {
       <label class="project-switch">Proyecto<select id="project-select">${options(projects, current.id)}</select></label>
       ${button('new-project', '+ Nuevo proyecto', 'new-project')}
       <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${({documents:'▤', book:'⊞', quotes:'❞', map:'⌘', prompts:'↗', history:'◷'})[id]}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
-      <div class="rail-bottom"><p><span class="local-dot"></span> Guardado en este navegador</p><p class="rail-note">Sin IA integrada. Sin envío de entrevistas.</p>${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
+      <div class="rail-bottom"><p id="save-state" role="status"><span class="local-dot"></span> ${saving ? 'Guardando cambios…' : 'Guardado en este navegador'}</p><p class="rail-note">Sin IA integrada. Sin envío de entrevistas.</p>${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
@@ -513,6 +518,9 @@ function refreshSearch(id) {
 }
 window.addEventListener('error',event=>report(event.error || new Error(event.message)));
 window.addEventListener('unhandledrejection',event=>{event.preventDefault();report(event.reason);});
+window.addEventListener('beforeunload',event=>{
+  if(saving) {event.preventDefault();event.returnValue='';}
+});
 async function start() {
   try {
     await openDB();
