@@ -2,11 +2,20 @@ export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
 export const colors = ['#12786b', '#396aa8', '#8b548c', '#9d6320', '#b34755', '#536c38'];
 export const relationTypes = ['está asociado con', 'es parte de', 'contradice', 'es causa de', 'es una propiedad de'];
+export const thematicPhases = [
+  { id: 'familiarization', name: 'Familiarización con los datos' },
+  { id: 'coding', name: 'Codificación inicial' },
+  { id: 'themes', name: 'Búsqueda de temas' },
+  { id: 'reviewing', name: 'Revisión de temas' },
+  { id: 'defining', name: 'Definición y nombre de temas' },
+  { id: 'writing', name: 'Redacción del informe' },
+];
 export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
 export function project(name, question = '') {
   return { schemaVersion: 1, id: uid(), name, question, createdAt: now(), updatedAt: now(),
-    documents: [], codes: [], categories: [], quotes: [], relations: [], prompts: [], history: [], positions: {}, researchQuestions: [] };
+    documents: [], codes: [], categories: [], quotes: [], relations: [], prompts: [], history: [], positions: {}, researchQuestions: [],
+    thematicAnalysis: Object.fromEntries(thematicPhases.map(phase => [phase.id, { notes: '', quoteIds: [] }])) };
 }
 export function log(p, action, detail) {
   p.updatedAt = now();
@@ -44,6 +53,15 @@ export function addQuote(p, documentId, start, end, codeIds, memo = '', research
   log(p, 'Cita codificada', quote.id);
   return quote;
 }
+export function codeDocumentMatrix(p) {
+  const matrix = Object.fromEntries(p.codes.map(code => [code.id, Object.fromEntries(p.documents.map(doc => [doc.id, 0]))]));
+  for (const quote of p.quotes) {
+    for (const codeId of quote.codeIds) {
+      if (matrix[codeId] && Object.hasOwn(matrix[codeId], quote.documentId)) matrix[codeId][quote.documentId]++;
+    }
+  }
+  return matrix;
+}
 export function validateProject(p) {
   const fail = () => { throw new Error('Respaldo inválido o incompatible. No se modificaron tus proyectos.'); };
   const str = v => typeof v === 'string';
@@ -79,6 +97,13 @@ export function validateProject(p) {
     if (!d || !Number.isInteger(q.start) || !Number.isInteger(q.end) || q.start < 0 || q.end <= q.start || q.end > d.text.length || q.text !== d.text.slice(q.start, q.end) || !str(q.memo) || !str(q.createdAt)) fail();
     if (!Array.isArray(q.codeIds) || !q.codeIds.length || new Set(q.codeIds).size !== q.codeIds.length || q.codeIds.some(id => !p.codes.some(c => c.id === id))) fail();
     if (q.researchQuestionIds !== undefined && (!Array.isArray(q.researchQuestionIds) || q.researchQuestionIds.some(id => !(p.researchQuestions || []).some(r => r.id === id)))) fail();
+  }
+  if (p.thematicAnalysis !== undefined) {
+    if (!p.thematicAnalysis || typeof p.thematicAnalysis !== 'object' || Array.isArray(p.thematicAnalysis) || Object.keys(p.thematicAnalysis).some(id => !thematicPhases.some(phase => phase.id === id))) fail();
+    for (const phase of thematicPhases) {
+      const entry = p.thematicAnalysis[phase.id];
+      if (!entry || !str(entry.notes) || !Array.isArray(entry.quoteIds) || new Set(entry.quoteIds).size !== entry.quoteIds.length || entry.quoteIds.some(id => !p.quotes.some(q => q.id === id))) fail();
+    }
   }
   const nodes = [...p.codes, ...p.categories];
   for (const r of p.relations) {

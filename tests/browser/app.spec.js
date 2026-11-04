@@ -150,3 +150,25 @@ test('relationship creation, evidence retrieval and node positions persist',asyn
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading',{name:'Citas e insertos'})).toBeVisible();
 });
+
+test('matrix opens source citations and thematic notes with evidence persist',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
+  await page.getByRole('button',{name:'Matriz código × documento'}).click();
+  await expect(page.getByRole('table',{name:'Citas por código y documento'})).toBeVisible();
+  await page.getByRole('button',{name:/citas de Coordinación informal en Entrevista de ejemplo/}).click();
+  await expect(page.locator('.quote-card')).toHaveCount(1);
+  await expect(page.locator('.quote-card')).toContainText('Cuando conocemos a alguien del otro equipo');
+  await page.getByRole('button',{name:'Análisis temático'}).click();
+  await page.getByRole('button',{name:'Editar notas y evidencia'}).first().click();
+  await page.getByLabel('Notas y decisiones').fill('Relectura inicial: aparecen contactos directos y continuidad de equipos.');
+  await page.getByLabel(/Entrevista de ejemplo.*Cuando conocemos/).check();
+  await page.getByRole('button',{name:'Guardar',exact:true}).click();
+  await expect(page.locator('.thematic-card').first()).toContainText('Relectura inicial');
+  await expect(page.locator('.thematic-card').first()).toContainText('1 cita vinculada');
+  await page.reload();
+  await page.getByRole('button',{name:'Análisis temático'}).click();
+  await expect(page.locator('.thematic-card').first()).toContainText('Relectura inicial');
+  await page.getByRole('button',{name:'Ver en contexto ↗'}).click();
+  await expect(page.locator('#selection-preview')).toContainText('Cuando conocemos a alguien del otro equipo');
+});

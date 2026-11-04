@@ -14,10 +14,12 @@ La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, 
 2. Importa DOCX / TXT UTF-8 o pega una entrevista.
 3. Crea códigos con definiciones y criterios, categorías y códigos padres.
 4. Selecciona texto en Documentos, asigna códigos y guarda la cita.
-5. Recupera citas, consulta su contexto y exporta matrices CSV o insertos HTML.
-6. Crea relaciones, agrega citas o memos de respaldo y exporta mapas SVG.
-7. En **Prompts sin API**, elige una pregunta, modalidad y alcance explícito. Copia el paquete a un chat externo solo si corresponde.
-8. **Descarga un respaldo JSON** al terminar cada sesión.
+5. Explora la matriz código × documento; abre las citas desde cada celda y exporta los recuentos a CSV.
+6. Recupera citas, consulta su contexto y exporta matrices de citas o insertos HTML.
+7. Registra notas y decisiones en las seis fases de análisis temático, vinculando citas como evidencia.
+8. Crea relaciones, agrega citas o memos de respaldo y exporta mapas SVG.
+9. En **Prompts sin API**, elige una pregunta, modalidad y alcance explícito. Copia el paquete a un chat externo solo si corresponde.
+10. **Descarga un respaldo JSON** al terminar cada sesión.
 
 ## Privacidad y almacenamiento
 
@@ -51,11 +53,11 @@ La app no recibe ni aplica respuestas de IA automáticamente: revisa las sugeren
 | DOCX | Extracción local de texto con Mammoth. No conserva páginas, formato, imágenes ni tablas como estructura. |
 | TXT UTF-8 / pegado | Texto con párrafos y posiciones estables. |
 | JSON | Respaldo completo validado y restauración en esta versión de Trama. |
-| CSV con `;` y BOM UTF-8 | Libro de códigos o matriz categoría–código–cita–origen. Protección básica contra fórmulas de hoja de cálculo. |
+| CSV con `;` y BOM UTF-8 | Libro de códigos, matriz código × documento o matriz categoría–código–cita–origen. Protección básica contra fórmulas de hoja de cálculo. |
 | HTML | Insertos filtrados para abrir en Word o imprimir a PDF en el navegador. No es un archivo DOCX nativo. |
 | SVG | Mapa vectorial con etiquetas y posiciones. |
 
-El texto importado es inmutable para no desplazar referencias. Los localizadores son párrafos y posiciones en el texto extraído, **no páginas del documento original**. Las categorías de los subcódigos se asignan explícitamente. Los filtros actuales se aplican a las exportaciones de citas.
+El texto importado es inmutable para no desplazar referencias. Los localizadores son párrafos y posiciones en el texto extraído, **no páginas del documento original**. Las categorías de los subcódigos se asignan explícitamente. Los filtros actuales se aplican a las exportaciones de citas. La matriz cuenta citas asignadas por código y documento; una cita con varios códigos cuenta una vez en cada uno. Los recuentos son descriptivos y no implican importancia ni prevalencia. Las fases temáticas son una guía flexible con notas y citas vinculadas, no una evaluación metodológica automática.
 
 ## Desarrollo local
 

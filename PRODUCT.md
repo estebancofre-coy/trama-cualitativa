@@ -24,7 +24,7 @@ Variante privada aprobada: interfaz y backend en Apps Script, acceso exclusivo a
 
 ## Capabilities and Constraints
 
-Proyectos, entrevistas TXT y DOCX, selección manual, libro de códigos inductivo y deductivo, categorías, subcódigos, memos, insertos y mapas de relaciones. Prompts por pregunta y selección explícita de documentos, fragmentos o citas previamente codificadas. Sin recodificación automática y sin llamadas a IA.
+Proyectos, entrevistas TXT y DOCX, selección manual, libro de códigos inductivo y deductivo, categorías, subcódigos, memos, matriz de recuentos código × documento con acceso a citas, flujo temático opcional en seis fases con notas y citas de respaldo, insertos y mapas de relaciones. Prompts por pregunta y selección explícita de documentos, fragmentos o citas previamente codificadas. Sin recodificación automática, evaluación metodológica ni llamadas a IA.
 
 Banco completo de preguntas y objetivos por proyecto, con selección de uno o varios elementos por solicitud y vínculos opcionales en la codificación manual. No se incluye automáticamente todo el banco ni todo el corpus.
 

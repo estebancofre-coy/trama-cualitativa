@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
+import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, codeDocumentMatrix, thematicPhases, promptText, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
 
 function config(p, overrides = {}) {
   return { question:'¿Cómo coordinan?',mode:'Inductiva',operation:'Codificar',scope:'quotes',budget:5,codeIds:p.codes.map(c=>c.id),quoteIds:[p.quotes[0].id],documentIds:[], ...overrides };
@@ -27,6 +27,24 @@ test('deduplicates exact quotes, merges code assignments, and preserves memo',()
   assert.match(q.memo,/Nota adicional/);
   assert.throws(()=>addQuote(p,q.documentId,-1,q.end,[p.codes[0].id]));
   assert.throws(()=>addQuote(p,q.documentId,0,10,[]));
+});
+test('code-document matrix counts each coded quote once per assigned code',()=>{
+  const p=demoProject();
+  addQuote(p,p.documents[0].id,p.quotes[0].start,p.quotes[0].end,p.codes.map(code=>code.id));
+  const matrix=codeDocumentMatrix(p);
+  assert.deepEqual(matrix[p.codes[0].id],{[p.documents[0].id]:1});
+  assert.deepEqual(matrix[p.codes[1].id],{[p.documents[0].id]:2});
+  assert.equal(Object.keys(matrix).length,p.codes.length);
+});
+test('thematic phase notes retain valid evidence links and reject missing citations',()=>{
+  const p=demoProject();
+  const phase=thematicPhases[0];
+  p.thematicAnalysis[phase.id]={notes:'Relectura del corpus y primeras observaciones.',quoteIds:[p.quotes[0].id]};
+  validateProject(p);
+  p.thematicAnalysis[phase.id].quoteIds=['missing'];
+  assert.throws(()=>validateProject(p));
+  delete p.thematicAnalysis;
+  assert.doesNotThrow(()=>validateProject(p));
 });
 test('paragraph offsets retain whitespace and empty lines',()=>{
   const doc={id:'d',text:'Primero\n\n  Segundo.\nTercero'};

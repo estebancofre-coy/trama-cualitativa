@@ -1,5 +1,5 @@
 import './style.css';
-import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, csv, demoProject, updateResearchBank } from './domain.js';
+import { uid, now, colors, relationTypes, thematicPhases, codeDocumentMatrix, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, csv, demoProject, updateResearchBank } from './domain.js';
 import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal } from './storage.js';
 
 const app = document.querySelector('#app');
@@ -10,6 +10,7 @@ let tab = 'documents';
 let docId;
 let selection = null;
 let quoteFilter = '';
+let quoteDocumentFilter = '';
 let documentSearch = '';
 let quoteSearch = '';
 let researchFilter = '';
@@ -19,7 +20,7 @@ let noticeTimer;
 let captureSelection;
 let pendingCount = 0;
 const privacySummary = cloudMode ? 'Instalación privada · Drive y Sheets · Sin IA integrada.' : 'Sin IA integrada. Sin envío de entrevistas.';
-const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['quotes', 'Citas e insertos'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['history', 'Bitácora']];
+const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['matrix', 'Matriz código × documento'], ['quotes', 'Citas e insertos'], ['thematic', 'Análisis temático'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['history', 'Bitácora']];
 const findCode = id => current.codes.find(c => c.id === id);
 const findNode = id => [...current.categories, ...current.codes].find(c => c.id === id);
 const activeResearch = () => (current.researchQuestions || []).filter(q => !q.archived);
@@ -70,10 +71,13 @@ function updateSaveState() {
 function download(name, content, type = 'text/plain;charset=utf-8') {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
-  a.href = url; a.download = name; a.click();
+  a.href = url; a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function fileName(s) { return s.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 100) || 'proyecto'; }
+function fileName(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 100) || 'proyecto'; }
 function modal(title, content, onSubmit, submitLabel = 'Guardar') {
   dialog.innerHTML = `<form><header><h2>${title}</h2>${button('close-dialog', 'Cerrar', 'quiet')}</header><div class="dialog-body">${content}</div><footer><button type="button" data-action="close-dialog">Cancelar</button><button type="submit" class="primary">${submitLabel}</button></footer><p class="form-error" role="alert"></p></form>`;
   dialog.querySelector('form').addEventListener('submit', async event => {
@@ -97,13 +101,13 @@ function render() {
       <a class="brand" href="#" data-action="home" aria-label="Trama, inicio"><span aria-hidden="true">⌘</span><div>trama<small>cualitativa</small></div></a>
       <label class="project-switch">Proyecto<select id="project-select">${options(projects, current.id)}</select></label>
       ${button('new-project', '+ Nuevo proyecto', 'new-project')}
-      <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${({documents:'▤', book:'⊞', quotes:'❞', map:'⌘', prompts:'↗', history:'◷'})[id]}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
+      <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${({documents:'▤', book:'⊞', matrix:'▦', quotes:'❞', thematic:'◇', map:'⌘', prompts:'↗', history:'◷'})[id]}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
       <div class="rail-bottom"><p id="save-state" role="status"><span class="local-dot"></span> ${saving ? 'Guardando cambios…' : storageLabel()}</p><p class="rail-note">${privacySummary}</p>${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : ''}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
-      <div class="page-heading"><div><h2>${tabs.find(t => t[0] === tab)[1]}</h2><p>${({documents:'De la voz a la evidencia. Selecciona un fragmento y asígnale códigos.',book:'Define, organiza y afina tu interpretación sin perder el origen.',quotes:'Sigue el recorrido categoría → código → cita → documento.',map:'Conecta conceptos. Abre sus citas para volver a la evidencia.',prompts:'Preguntas elegidas, corpus acotado. Tú decides el alcance de cada solicitud.',history:'Registro de cambios y solicitudes de este proyecto.'})[tab]}</p></div><div class="actions">${tabActions()}</div></div>
-      <section id="workspace">${({documents:documentsView, book:bookView, quotes:quotesView, map:mapView, prompts:promptsView, history:historyView})[tab]()}</section>
+      <div class="page-heading"><div><h2>${tabs.find(t => t[0] === tab)[1]}</h2><p>${({documents:'De la voz a la evidencia. Selecciona un fragmento y asígnale códigos.',book:'Define, organiza y afina tu interpretación sin perder el origen.',matrix:'Explora cuántas citas de cada código hay por documento y vuelve a la evidencia.',quotes:'Sigue el recorrido categoría → código → cita → documento.',thematic:'Registra decisiones de análisis y vincúlalas con citas. Las fases son una guía flexible, no una evaluación automática.',map:'Conecta conceptos. Abre sus citas para volver a la evidencia.',prompts:'Preguntas elegidas, corpus acotado. Tú decides el alcance de cada solicitud.',history:'Registro de cambios y solicitudes de este proyecto.'})[tab]}</p></div><div class="actions">${tabActions()}</div></div>
+      <section id="workspace">${({documents:documentsView, book:bookView, matrix:matrixView, quotes:quotesView, thematic:thematicView, map:mapView, prompts:promptsView, history:historyView})[tab]()}</section>
       <footer class="workspace-footer">Trama cualitativa · ${cloudMode ? 'Drive privado' : 'Trabajo local'}, interpretación humana.<span>${current.codes.length} códigos · ${current.categories.length} categorías · ${current.quotes.length} citas</span></footer>
     </main></div>`;
   if (tab === 'documents') setupSelection();
@@ -113,6 +117,7 @@ function render() {
 function tabActions() {
   if (tab === 'documents') return button('paste-document', 'Pegar entrevista') + button('import-document', '↑ Importar TXT / DOCX', 'primary');
   if (tab === 'book') return button('export-book', '↓ Libro CSV') + button('new-category', '+ Categoría') + button('new-code', '+ Código', 'primary');
+  if (tab === 'matrix') return button('export-matrix', '↓ Exportar matriz CSV');
   if (tab === 'quotes') return button('export-quotes', '↓ Matriz CSV') + button('export-report', '↓ Insertos HTML', 'primary');
   if (tab === 'map') return button('export-map', '↓ Mapa SVG') + button('new-relation', '+ Relación', 'primary');
   return '';
@@ -187,13 +192,45 @@ function bookView() {
   return `<div class="book-layout"><aside class="category-list"><h3>Categorías mayores</h3>${current.categories.map(c => `<div class="category-entry"><span class="code-dot" style="background:${c.color}"></span><div><strong>${e(c.name)}</strong><p>${e(c.description)}</p><small>${current.codes.filter(code => code.categoryId === c.id).length} códigos</small></div>${button('edit-category', 'Editar', 'quiet', `data-id="${c.id}"`)}</div>`).join('') || '<p class="muted">Todavía no hay categorías. Puedes codificar primero y agrupar después.</p>'}</aside>
   <div class="code-table"><table><thead><tr><th>Código / jerarquía</th><th>Definición y criterios</th><th>Citas</th><th><span class="sr-only">Acciones</span></th></tr></thead><tbody>${current.codes.map(c => `<tr><td><span class="tag" style="--code-color:${c.color}">${e(c.name)}</span><small class="path">${e(codePath(current, c.id))}</small></td><td><p>${e(c.description || 'Sin definición')}</p><small><strong>Incluir:</strong> ${e(c.inclusion || 'Sin definir')}<br><strong>Excluir:</strong> ${e(c.exclusion || 'Sin definir')}</small></td><td>${button('code-quotes', String(current.quotes.filter(q => q.codeIds.includes(c.id)).length), 'count-button', `data-id="${c.id}" aria-label="Ver citas de ${e(c.name)}"`)}</td><td>${button('edit-code', 'Editar', 'quiet', `data-id="${c.id}"`)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
+function matrixView() {
+  if (!current.codes.length || !current.documents.length) return empty('La matriz necesita códigos y documentos', 'Importa entrevistas y asigna códigos a algunas citas para explorar su distribución.', button('go-documents','Ir a Documentos','primary') + button('go-book','Ir al libro de códigos'));
+  const matrix = codeDocumentMatrix(current);
+  const max = Math.max(1,...Object.values(matrix).flatMap(row=>Object.values(row)));
+  return `<p class="muted">Cada celda cuenta citas asignadas a ese código en ese documento. Una cita con varios códigos cuenta una vez en cada código. El recuento no representa importancia, prevalencia ni significado; selecciona una celda para revisar sus citas.</p><div class="code-table matrix-table"><table><caption class="sr-only">Citas por código y documento</caption><thead><tr><th scope="col">Código</th>${current.documents.map(doc=>`<th scope="col">${e(doc.name)}</th>`).join('')}</tr></thead><tbody>${current.codes.map(code=>`<tr><th scope="row"><span class="tag" style="--code-color:${code.color}">${e(code.name)}</span><small class="path">${e(codePath(current,code.id))}</small></th>${current.documents.map(doc=>{
+    const count=matrix[code.id][doc.id];
+    const intensity=count ? (0.12 + 0.68 * count / max).toFixed(2) : 0;
+    return `<td class="matrix-cell" style="--cell-intensity:${intensity}">${count ? button('matrix-cell',String(count),'count-button',`data-code="${code.id}" data-document="${doc.id}" aria-label="${count} citas de ${e(code.name)} en ${e(doc.name)}" title="Ver citas de ${e(code.name)} en ${e(doc.name)}"`) : '<span aria-label="0 citas">—</span>'}</td>`;
+  }).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
 function filteredQuotes() {
-  return current.quotes.filter(q => (!quoteFilter || q.codeIds.includes(quoteFilter)) && (!researchFilter || (q.researchQuestionIds || []).includes(researchFilter)) && (!quoteSearch || `${q.text} ${q.memo} ${location(current,q)}`.toLocaleLowerCase().includes(quoteSearch.toLocaleLowerCase())));
+  return current.quotes.filter(q => (!quoteFilter || q.codeIds.includes(quoteFilter)) && (!quoteDocumentFilter || q.documentId === quoteDocumentFilter) && (!researchFilter || (q.researchQuestionIds || []).includes(researchFilter)) && (!quoteSearch || `${q.text} ${q.memo} ${location(current,q)}`.toLocaleLowerCase().includes(quoteSearch.toLocaleLowerCase())));
 }
 function quotesView() {
   if (!current.quotes.length) return empty('Aquí empieza la trazabilidad', 'Guarda una cita desde Documentos. Después podrás volver al origen, reorganizar códigos y exportar insertos para tu informe.', button('go-documents', 'Ir a Documentos', 'primary'));
   const quotes = filteredQuotes();
-  return `<div class="filterbar"><label>Filtrar por código<select id="quote-filter">${options(current.codes, quoteFilter, 'Todos los códigos')}</select></label><label>Pregunta / objetivo<select id="research-filter">${options((current.researchQuestions||[]).map(q=>({id:q.id,name:`${q.text}${q.archived?' (archivado)':''}`})),researchFilter,'Todos')}</select></label><label>Buscar citas o memos<input type="search" id="quote-search" value="${e(quoteSearch)}" placeholder="Texto, entrevista o memo…"></label><span>${quotes.length} de ${current.quotes.length} citas</span></div><div class="quote-list">${quotes.map(q => `<article class="quote-card" id="quote-${q.id}"><header><span>${e(location(current,q))}</span>${button('source', 'Ver en contexto ↗', 'quiet', `data-id="${q.id}"`)}</header><blockquote>${e(q.text)}</blockquote><div class="quote-paths">${q.codeIds.map(id => `<span class="tag" style="--code-color:${findCode(id).color}">${e(codePath(current,id))}</span>`).join('')}</div>${researchText(q)?`<p class="memo"><strong>Preguntas / objetivos:</strong> ${e(researchText(q))}</p>`:''}${q.memo ? `<p class="memo"><strong>Memo:</strong> ${e(q.memo)}</p>` : ''}<footer><small>ID de cita: ${q.id}</small><div>${button('edit-quote', 'Editar códigos / memo', 'quiet', `data-id="${q.id}"`)}${button('delete-quote', 'Eliminar cita', 'quiet danger', `data-id="${q.id}"`)}</div></footer></article>`).join('') || empty('Sin coincidencias', 'Cambia los filtros para ver otras citas.')}</div>`;
+  return `<div class="filterbar"><label>Filtrar por código<select id="quote-filter">${options(current.codes, quoteFilter, 'Todos los códigos')}</select></label><label>Entrevista<select id="quote-document-filter">${options(current.documents, quoteDocumentFilter, 'Todas')}</select></label><label>Pregunta / objetivo<select id="research-filter">${options((current.researchQuestions||[]).map(q=>({id:q.id,name:`${q.text}${q.archived?' (archivado)':''}`})),researchFilter,'Todos')}</select></label><label>Buscar citas o memos<input type="search" id="quote-search" value="${e(quoteSearch)}" placeholder="Texto, entrevista o memo…"></label><span>${quotes.length} de ${current.quotes.length} citas</span></div><div class="quote-list">${quotes.map(q => `<article class="quote-card" id="quote-${q.id}"><header><span>${e(location(current,q))}</span>${button('source', 'Ver en contexto ↗', 'quiet', `data-id="${q.id}"`)}</header><blockquote>${e(q.text)}</blockquote><div class="quote-paths">${q.codeIds.map(id => `<span class="tag" style="--code-color:${findCode(id).color}">${e(codePath(current,id))}</span>`).join('')}</div>${researchText(q)?`<p class="memo"><strong>Preguntas / objetivos:</strong> ${e(researchText(q))}</p>`:''}${q.memo ? `<p class="memo"><strong>Memo:</strong> ${e(q.memo)}</p>` : ''}<footer><small>ID de cita: ${q.id}</small><div>${button('edit-quote', 'Editar códigos / memo', 'quiet', `data-id="${q.id}"`)}${button('delete-quote', 'Eliminar cita', 'quiet danger', `data-id="${q.id}"`)}</div></footer></article>`).join('') || empty('Sin coincidencias', 'Cambia los filtros para ver otras citas.')}</div>`;
+}
+function thematicView() {
+  const data = current.thematicAnalysis || {};
+  return `<p class="muted thematic-intro">Guía basada en las seis fases de Braun y Clarke. Registra notas y decisiones, selecciona citas de respaldo y vuelve a la transcripción desde cada evidencia. Las fases pueden revisitarse; esta herramienta no determina si el análisis es correcto ni sustituye la reflexión metodológica.</p><div class="thematic-grid">${thematicPhases.map((phase,index)=>{
+    const entry=data[phase.id] || {notes:'',quoteIds:[]};
+    return `<article class="thematic-card"><header><span>FASE ${index+1}</span><h3>${e(phase.name)}</h3></header><p class="${entry.notes?'':'muted'} thematic-notes">${entry.notes ? e(entry.notes) : 'Sin notas todavía.'}</p><div class="thematic-evidence"><strong>${entry.quoteIds.length} ${entry.quoteIds.length===1?'cita vinculada':'citas vinculadas'}</strong>${entry.quoteIds.map(id=>{
+      const quote=current.quotes.find(q=>q.id===id);
+      return quote ? `<div><blockquote>${e(quote.text)}</blockquote><small>${e(location(current,quote))}</small>${button('source','Ver en contexto ↗','quiet',`data-id="${quote.id}"`)}</div>` : '';
+    }).join('') || '<p class="muted">No hay evidencia vinculada.</p>'}</div>${button('edit-thematic-phase','Editar notas y evidencia','quiet',`data-id="${phase.id}"`)}</article>`;
+  }).join('')}</div>`;
+}
+function thematicPhaseDialog(id) {
+  const phase=thematicPhases.find(item=>item.id===id);
+  if(!phase) throw new Error('La fase seleccionada no existe.');
+  const entry=current.thematicAnalysis?.[id] || {notes:'',quoteIds:[]};
+  modal(phase.name,`${textarea('Notas y decisiones','notes',entry.notes,7)}<fieldset><legend>Citas de respaldo</legend>${checklist('quoteIds',current.quotes.map(q=>({id:q.id,name:`${location(current,q)}: ${q.text.slice(0,150)}`})),entry.quoteIds)}</fieldset><p class="muted">Las citas se vinculan como evidencia; el texto fuente no se copia ni modifica. Puedes volver a esta fase y revisar las notas.</p>`,async form=>{
+    await mutate(p=>{
+      p.thematicAnalysis ||= Object.fromEntries(thematicPhases.map(item=>[item.id,{notes:'',quoteIds:[]}]));
+      p.thematicAnalysis[id]={notes:form.get('notes').trim(),quoteIds:form.getAll('quoteIds')};
+      log(p,'Fase de análisis temático actualizada',JSON.stringify({phase:id,quoteIds:p.thematicAnalysis[id].quoteIds}));
+    });
+  });
 }
 function codeDialog(id) {
   const c = id ? findCode(id) : { name:'', description:'', inclusion:'', exclusion:'', color:colors[current.codes.length % colors.length], categoryId:null, parentId:null };
@@ -244,7 +281,7 @@ function projectDialog(edit = false) {
     }
   }, edit ? 'Guardar ajustes' : 'Crear proyecto');
 }
-function resetView() { docId = undefined; selection = null; quoteFilter = ''; quoteSearch = ''; researchFilter = ''; documentSearch = ''; lastPrompt = ''; tab = 'documents'; }
+function resetView() { docId = undefined; selection = null; quoteFilter = ''; quoteDocumentFilter = ''; quoteSearch = ''; researchFilter = ''; documentSearch = ''; lastPrompt = ''; tab = 'documents'; }
 async function importDocument() {
   const files = await chooseFiles('.txt,.docx',true);
   if (!files.length) return;
@@ -459,10 +496,10 @@ function historyView() {
 }
 function help() {
   if(cloudMode) {
-    modal('Guía de la instalación privada', `<div class="help"><h3>Drive es el almacenamiento principal</h3><p>Cada guardado confirmado crea un archivo JSON completo e inmutable. La hoja Proyectos apunta a la versión vigente. Los documentos importados también conservan su original en Drive. No compartas la carpeta, la hoja ni los archivos.</p><h3>Sheets es un índice, no el editor</h3><p>En «Drive, índices y versiones», actualiza los índices después de trabajar. Las pestañas Documentos, Categorias, Codigos, Citas, Relaciones y Bitacora son proyecciones regenerables. No edites Proyectos ni uses las hojas para cambiar la codificación.</p><h3>Recuperación y conflictos</h3><p>Si falla una conexión, el intento completo queda en este navegador. En Recuperación local puedes descargarlo, reintentarlo con el mismo identificador o guardarlo como proyecto nuevo. Un conflicto nunca sobrescribe silenciosamente otro equipo. Antes de cerrar, espera la confirmación de Drive.</p><h3>Versiones</h3><p>Descarga versiones anteriores desde «Drive, índices y versiones». Para revisarlas sin reemplazar el proyecto actual, restáuralas como copias independientes. También puedes conservar respaldos JSON fuera de Google.</p><h3>Análisis y prompts</h3><p>El flujo de códigos, categorías, citas, memos, mapas e insertos funciona como en la versión local. Los prompts se archivan en Drive, sin enviarse a una IA. Revisa anonimización y consentimientos antes de copiarlos a un chat.</p><h3>Límites</h3><p>Solo PC. Máximo 8 MB de JSON por proyecto y 8 MB por archivo original. Las cuotas de Google pueden interrumpir operaciones. Las versiones consumen espacio y no se purgan automáticamente. Es una instalación personal, no un sistema colaborativo. Las copias pendientes del navegador y los JSON descargados no están cifrados por Trama.</p></div>`,async()=>{},'Entendido');
+    modal('Guía de la instalación privada', `<div class="help"><h3>Drive es el almacenamiento principal</h3><p>Cada guardado confirmado crea un archivo JSON completo e inmutable. La hoja Proyectos apunta a la versión vigente. Los documentos importados también conservan su original en Drive. No compartas la carpeta, la hoja ni los archivos.</p><h3>Sheets es un índice, no el editor</h3><p>En «Drive, índices y versiones», actualiza los índices después de trabajar. Las pestañas Documentos, Categorias, Codigos, Citas, Relaciones y Bitacora son proyecciones regenerables. No edites Proyectos ni uses las hojas para cambiar la codificación.</p><h3>Recuperación y conflictos</h3><p>Si falla una conexión, el intento completo queda en este navegador. En Recuperación local puedes descargarlo, reintentarlo con el mismo identificador o guardarlo como proyecto nuevo. Un conflicto nunca sobrescribe silenciosamente otro equipo. Antes de cerrar, espera la confirmación de Drive.</p><h3>Versiones</h3><p>Descarga versiones anteriores desde «Drive, índices y versiones». Para revisarlas sin reemplazar el proyecto actual, restáuralas como copias independientes. También puedes conservar respaldos JSON fuera de Google.</p><h3>Análisis y prompts</h3><p>El flujo de códigos, categorías, citas, memos, matriz código × documento, fases temáticas, mapas e insertos funciona como en la versión local. La matriz describe recuentos, no importancia ni prevalencia. Las fases guardan notas y vínculos a evidencia; no evalúan ni automatizan el análisis. Los prompts se archivan en Drive, sin enviarse a una IA. Revisa anonimización y consentimientos antes de copiarlos a un chat.</p><h3>Límites</h3><p>Solo PC. Máximo 8 MB de JSON por proyecto y 8 MB por archivo original. Las cuotas de Google pueden interrumpir operaciones. Las versiones consumen espacio y no se purgan automáticamente. Es una instalación personal, no un sistema colaborativo. Las copias pendientes del navegador y los JSON descargados no están cifrados por Trama.</p></div>`,async()=>{},'Entendido');
     return;
   }
-  modal('Guía de uso y privacidad',`<div class="help"><h3>1. Prepara tu corpus</h3><p>Crea un proyecto por estudio. Importa TXT UTF-8, DOCX o pega texto. Se conserva el texto extraído, no el archivo Word original, sus páginas, imágenes ni tablas como estructura. Revisa siempre la importación.</p><h3>2. Codifica manualmente</h3><p>Crea códigos y categorías en el libro. En Documentos, selecciona texto y asigna uno o varios códigos. Usa memos para registrar interpretaciones. Puedes definir códigos padres y criterios deductivos.</p><h3>3. Recupera evidencia</h3><p>En Citas, filtra por código, revisa memos y usa «Ver en contexto». Las exportaciones CSV y los insertos HTML respetan el filtro actual. El HTML se abre en Word o permite imprimir a PDF.</p><h3>4. Conecta conceptos</h3><p>El mapa incluye jerarquías del libro y relaciones dirigidas. Arrastra nodos; usa doble clic o Enter para consultar evidencia. Añade memos o citas al fundamentar relaciones. Exporta SVG para informes.</p><h3>5. Prepara prompts sin API</h3><p>Selecciona una pregunta y alcance. Para desglosar usa citas codificadas, no todo el corpus. El paquete se guarda exactamente como fue generado. Copia manualmente al chat que elijas. Las respuestas externas se revisan y registran manualmente: no hay importación automática ni codificación por IA.</p><h3>Respaldo y límites</h3><p>Los proyectos usan IndexedDB, en este navegador y dirección web. No se sincronizan. El modo privado, borrar datos del sitio o cambiar de dispositivo puede hacerlos inaccesibles. Descarga JSON regularmente. Restaurar crea una copia independiente; no sobrescribe proyectos.</p><p>La app no transmite entrevistas ni incorpora analítica. GitHub aloja el código y recibe las peticiones normales de acceso al sitio. Un chat externo tiene sus propias condiciones: anonimiza y verifica consentimientos antes de copiar. La app no cifra los datos locales ni sustituye un protocolo de resguardo.</p><p>No importa proyectos propietarios de ATLAS.ti, PDF escaneado, audio ni video. No es una réplica ni está afiliada a ATLAS.ti.</p></div>`,async()=>{},'Entendido');
+  modal('Guía de uso y privacidad',`<div class="help"><h3>1. Prepara tu corpus</h3><p>Crea un proyecto por estudio. Importa TXT UTF-8, DOCX o pega texto. Se conserva el texto extraído, no el archivo Word original, sus páginas, imágenes ni tablas como estructura. Revisa siempre la importación.</p><h3>2. Codifica manualmente</h3><p>Crea códigos y categorías en el libro. En Documentos, selecciona texto y asigna uno o varios códigos. Usa memos para registrar interpretaciones. Puedes definir códigos padres y criterios deductivos.</p><h3>3. Explora la matriz</h3><p>La matriz código × documento cuenta citas por código y entrevista. Una celda abre sus citas para revisar la evidencia. Los recuentos no equivalen a importancia ni prevalencia; puedes exportarlos a CSV.</p><h3>4. Registra el análisis temático</h3><p>En Análisis temático, agrega notas y citas de respaldo a cada una de las seis fases de Braun y Clarke. Es una guía flexible que no evalúa ni automatiza tu análisis.</p><h3>5. Recupera evidencia</h3><p>En Citas, filtra por código o entrevista, revisa memos y usa «Ver en contexto». Las exportaciones CSV y los insertos HTML respetan el filtro actual. El HTML se abre en Word o permite imprimir a PDF.</p><h3>6. Conecta conceptos</h3><p>El mapa incluye jerarquías del libro y relaciones dirigidas. Arrastra nodos; usa doble clic o Enter para consultar evidencia. Añade memos o citas al fundamentar relaciones. Exporta SVG para informes.</p><h3>7. Prepara prompts sin API</h3><p>Selecciona una pregunta y alcance. Para desglosar usa citas codificadas, no todo el corpus. El paquete se guarda exactamente como fue generado. Copia manualmente al chat que elijas. Las respuestas externas se revisan y registran manualmente: no hay importación automática ni codificación por IA.</p><h3>Respaldo y límites</h3><p>Los proyectos usan IndexedDB, en este navegador y dirección web. No se sincronizan. El modo privado, borrar datos del sitio o cambiar de dispositivo puede hacerlos inaccesibles. Descarga JSON regularmente. Restaurar crea una copia independiente; no sobrescribe proyectos.</p><p>La app no transmite entrevistas ni incorpora analítica. GitHub aloja el código y recibe las peticiones normales de acceso al sitio. Un chat externo tiene sus propias condiciones: anonimiza y verifica consentimientos antes de copiar. La app no cifra los datos locales ni sustituye un protocolo de resguardo.</p><p>No importa proyectos propietarios de ATLAS.ti, PDF escaneado, audio ni video. No es una réplica ni está afiliada a ATLAS.ti.</p></div>`,async()=>{},'Entendido');
 }
 async function restore() {
   const [file]=await chooseFiles('.json');
@@ -519,9 +556,11 @@ const actions = {
   'new-code':()=>codeDialog(), 'edit-code':codeDialog,
   'new-category':()=>categoryDialog(), 'edit-category':categoryDialog,
   'go-documents':()=>{tab='documents';render();},'go-book':()=>{tab='book';render();},
-  'code-quotes':id=>{quoteFilter=id;quoteSearch='';tab='quotes';render();},
+  'code-quotes':id=>{quoteFilter=id;quoteDocumentFilter='';quoteSearch='';tab='quotes';render();},
+  'matrix-cell':(_,target)=>{quoteFilter=target.dataset.code;quoteDocumentFilter=target.dataset.document;quoteSearch='';tab='quotes';render();},
+  'edit-thematic-phase':thematicPhaseDialog,
   'source':showSource,'edit-quote':editQuote,
-  'delete-quote':id=>modal('Eliminar cita', '<p>Se eliminará esta cita y sus vínculos de respaldo en relaciones. El texto fuente y los códigos permanecerán. Esta acción no tiene deshacer.</p>',async()=>{await mutate(p=>{p.quotes=p.quotes.filter(q=>q.id!==id);p.relations.forEach(r=>{r.quoteIds=r.quoteIds.filter(q=>q!==id);});log(p,'Cita eliminada',id);});},'Eliminar cita'),
+  'delete-quote':id=>modal('Eliminar cita', '<p>Se eliminará esta cita y sus vínculos de respaldo en relaciones y fases temáticas. El texto fuente y los códigos permanecerán. Esta acción no tiene deshacer.</p>',async()=>{await mutate(p=>{p.quotes=p.quotes.filter(q=>q.id!==id);p.relations.forEach(r=>{r.quoteIds=r.quoteIds.filter(q=>q!==id);});Object.values(p.thematicAnalysis || {}).forEach(phase=>{phase.quoteIds=phase.quoteIds.filter(q=>q!==id);});log(p,'Cita eliminada',id);});},'Eliminar cita'),
   'backup':()=>{download(`${fileName(current.name)}-${now().slice(0,10)}.json`,JSON.stringify(current,null,2),'application/json');notify('Respaldo descargado. Contiene entrevistas y citas: guárdalo de forma segura.');},
   'restore':restore,'help':help,
   'recovery':recoveryPanel, 'cloud-panel':cloudPanel,
@@ -540,6 +579,7 @@ const actions = {
   },
   'download-version':async id=>{const p=await cloudCall('getCloudVersion',current.id,id);validateProject(p);download(`${fileName(p.name)}-version-${p.updatedAt.slice(0,10)}.json`,JSON.stringify(p,null,2),'application/json');},
   'export-book':()=>download(`${fileName(current.name)}-libro.csv`,csv([['ID','Ruta','Definición','Incluir','Excluir'],...current.codes.map(c=>[c.id,codePath(current,c.id),c.description,c.inclusion,c.exclusion])]),'text/csv;charset=utf-8'),
+  'export-matrix':()=>{const matrix=codeDocumentMatrix(current);download(`${fileName(current.name)}-matriz-codigo-documento.csv`,csv([['ID código','Código',...current.documents.map(doc=>doc.name)],...current.codes.map(code=>[code.id,codePath(current,code.id),...current.documents.map(doc=>matrix[code.id][doc.id])])]),'text/csv;charset=utf-8');},
   'export-quotes':()=>download(`${fileName(current.name)}-matriz.csv`,csv([['Proyecto','Categoría → código','ID código','ID cita','Cita literal','Origen','Memo','Preguntas / objetivos'],...exportRows()]),'text/csv;charset=utf-8'),
   'export-report':exportReport,
   'new-relation':()=>relationDialog(), 'edit-relation':relationDialog,
@@ -553,16 +593,17 @@ const actions = {
 document.addEventListener('click',async event=>{
   const target=event.target.closest('[data-action], [data-tab]');
   if(!target) return;
-  event.preventDefault();
+  if(target.matches('a')) event.preventDefault();
   try {
     if(saving) throw new Error('Espera a que termine el guardado antes de cambiar de tarea.');
     if(target.dataset.tab) {tab=target.dataset.tab;render();window.scrollTo(0,0);return;}
-    await actions[target.dataset.action]?.(target.dataset.id);
+    await actions[target.dataset.action]?.(target.dataset.id,target);
   } catch(error) {report(error);}
 });
 document.addEventListener('change',event=>{
   if(event.target.id==='project-select') {current=projects.find(p=>p.id===event.target.value);resetView();render();}
   if(event.target.id==='quote-filter') {quoteFilter=event.target.value;render();}
+  if(event.target.id==='quote-document-filter') {quoteDocumentFilter=event.target.value;render();}
   if(event.target.id==='research-filter') {researchFilter=event.target.value;render();}
 });
 document.addEventListener('input',event=>{
