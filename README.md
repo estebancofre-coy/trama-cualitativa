@@ -15,7 +15,7 @@ La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, 
 3. Crea códigos con definiciones y criterios, categorías y códigos padres.
 4. Selecciona texto en Documentos y crea un código desde el inspector lateral para generar una cita vinculada, o asigna códigos existentes y guarda la cita.
 5. Recupera citas por código, categoría o pregunta, consulta su contexto y exporta matrices CSV o insertos HTML.
-6. Vincula códigos y categorías desde el mapa o el formulario; edita las etiquetas, organiza el mapa automáticamente y exporta SVG con sus rutas y posiciones.
+6. Crea o abre mapas guardados por categoría, pregunta u objetivo en ventanas independientes. Vincula nodos, edita etiquetas, organiza cada mapa y exporta SVG o PNG.
 7. En **Prompts sin API**, elige una pregunta, modalidad y alcance explícito. Exporta el prompt en JSON, TXT o Markdown. Por defecto no contiene el texto del corpus: adjunta los documentos originales directamente a la IA externa.
 8. Importa su respuesta exclusivamente en JSON y revisa los códigos y citas en **Revisión externa** antes de aceptarlos. La autovalidación es opcional y está desactivada en cada importación.
 9. **Descarga un respaldo JSON** al terminar cada sesión.
@@ -83,6 +83,12 @@ Los respaldos antiguos siguen siendo compatibles. Al restaurar un proyecto como 
 
 ### Mapas para exposición de resultados
 
+En **Mapa de relaciones**, elige **Crear mapa** o **Abrir mapa** en la galería. Cada mapa tiene nombre, alcance y disposición propios: una categoría con sus códigos, o los códigos de citas vinculadas a una pregunta u objetivo con sus categorías de contexto. Una pregunta sin citas vinculadas muestra un mapa vacío que se actualiza al codificar evidencia.
+
+Los mapas se abren en ventanas separadas; puedes trabajar con varios en paralelo. Si el navegador bloquea una ventana, permite ventanas emergentes para este sitio y usa **Abrir mapa**: el mapa creado sigue guardado. Abrir nuevamente un mapa ya abierto enfoca su ventana. Los botones compactos muestran ayuda al pasar el ratón o recibir foco con el teclado.
+
+Las ventanas comparten los códigos, categorías, citas y relaciones del proyecto, pero no sus posiciones ni formato de organización. Los cambios se guardan automáticamente y se notifican a las demás ventanas del mismo navegador. **Guardar mapa** permite confirmar el nombre o renombrarlo. Eliminar un mapa elimina su vista guardada, no los datos de análisis. Los respaldos JSON incluyen todos los mapas.
+
 En **Mapa de relaciones**, usa **Conectar nodos** y selecciona el origen y el destino, con clic o Enter. El formulario permite elegir una vinculación existente o **Texto personalizado**, añadir su fundamento y vincular citas de respaldo. Puedes editar una relación haciendo clic sobre su línea o etiqueta, usando Enter/Espacio sobre el vínculo o mediante **Revisar** en la lista. Los nombres admiten hasta 120 caracteres. Las conexiones estructurales del libro se editan mediante categorías y códigos padres, no renombrando su significado en el mapa.
 
 El panel **Relación rápida** permite elegir origen, destino y vínculo mediante botones de selección, sin usar desplegables. Incluye búsqueda por nombre para códigos y categorías, un vínculo personalizado opcional y fundamento o citas de respaldo. Los nodos elegidos se destacan en el mapa. No permite relacionar un nodo consigo mismo y mantiene las mismas comprobaciones de evidencia y fundamento causal del método clásico.
@@ -97,7 +103,7 @@ El selector **Organización** ofrece cinco formatos con el motor ELK, empaquetad
 - **Capas verticales:** disposición jerárquica vertical con rutas ortogonales.
 - **Radial:** distribución alrededor de centros para explorar redes.
 
-Pulsa **Organizar mapa** para aplicar y guardar posiciones, formato y rutas; la acción admite deshacer durante la sesión. Las relaciones cíclicas y los nodos desconectados se conservan: organizar como árbol no convierte la red en un árbol ni elimina vínculos. Tampoco cambia códigos, categorías, citas ni la dirección semántica de sus relaciones.
+Pulsa **Organizar mapa** para aplicar y guardar posiciones, formato y rutas del mapa abierto. Las relaciones cíclicas y los nodos desconectados del alcance se conservan: organizar como árbol no convierte la red en un árbol ni elimina vínculos. Tampoco cambia códigos, categorías, citas ni la dirección semántica de sus relaciones. Doble clic o Enter en un nodo abre su evidencia textual sin salir de la ventana.
 
 **Conexiones** permite cambiar entre rectas y ortogonales conservando las posiciones. Puedes arrastrar nodos después de organizar; al moverlos o cambiar la estructura se descartan las rutas automáticas anteriores y se recalculan conexiones locales. Vuelve a organizar para optimizar de nuevo las rutas y sus etiquetas.
 
@@ -322,9 +328,10 @@ La creación, demostración y restauración de proyectos usan `saveProject` dire
 
 ```mermaid
 flowchart TD
-	A["Categorías y códigos del proyecto"] --> B["mapView: construir nodos, jerarquías y relaciones interpretativas"]
-	B --> C["Restaurar posiciones guardadas o calcular iniciales"]
-	C --> D["setupMap: dibujar conexiones y ajustar etiquetas"]
+	A["Galería: crear mapa o abrir uno guardado"] --> SCOPE["Elegir categoría o pregunta / objetivo"]
+	SCOPE --> B["Ventana independiente: mapEditorView con nodos y relaciones del alcance"]
+	B --> C["Restaurar posiciones de este mapa o calcular iniciales"]
+	C --> D["setupMapEditor: dibujar conexiones y ajustar etiquetas"]
 	D --> E["Arrastrar nodo, cambiar zoom o ajustar mapa"]
 	D --> ELK["Elegir formato y organizar con ELK: ortogonal, árboles, capas o radial"]
 	ELK --> SAVE["Guardar posiciones, formato y rutas; conservar relaciones y evidencia"]
@@ -335,8 +342,8 @@ flowchart TD
 	EDIT --> J
 	E -->|Arrastre terminado| F["Guardar posición y registrar reubicación"]
 	D --> G["Doble clic o Enter en un nodo"]
-	G -->|Código| H["Abrir Citas con filtro por código"]
-	G -->|Categoría| I["Mostrar diálogo con evidencia de sus códigos"]
+	G -->|Código| H["Mostrar evidencia del código en este alcance"]
+	G -->|Categoría| I["Mostrar evidencia de sus códigos en este alcance"]
 	J["Crear o editar relación dirigida"] --> K["Validar nodos distintos, tipo y memo o citas de respaldo"]
 	K --> L["Exigir fundamento en memo si el tipo es causal"]
 	L --> M["Guardar relación y regenerar mapa"]
@@ -348,7 +355,7 @@ flowchart TD
 	R --> S["Consultar índices; no editar el análisis desde Sheets"]
 ```
 
-Los índices se reconstruyen a petición, no en cada guardado. No contienen transcripciones completas y no sustituyen los JSON canónicos de Drive. Las posiciones del mapa pertenecen al proyecto; zoom y ajuste de vista no se guardan como posiciones de nodos.
+Los índices se reconstruyen a petición, no en cada guardado. No contienen transcripciones completas y no sustituyen los JSON canónicos de Drive. Cada entrada de `savedMaps` conserva su alcance, posiciones y organización dentro del proyecto; zoom y ajuste de vista no se guardan como posiciones de nodos. `BroadcastChannel` notifica cambios entre ventanas del mismo origen; el almacenamiento sigue siendo local o Drive, según la instalación. No implica colaboración ni sincronización entre dispositivos.
 
 ### 6. Exportaciones, respaldo, versiones y recuperación
 

@@ -5,19 +5,19 @@ export const mapLayouts = [
   {id:'layered-down',name:'Capas verticales',algorithm:'layered',direction:'DOWN'},
   {id:'radial',name:'Radial',algorithm:'radial',direction:'RIGHT'},
 ];
-export const mapNodes = p => [...p.categories, ...p.codes];
-export const mapEdges = p => [
-  ...p.codes.filter(c => c.categoryId).map(c => ({id:`cat-${c.id}`,source:c.id,target:c.categoryId,type:'es parte de',structural:true})),
-  ...p.codes.filter(c => c.parentId).map(c => ({id:`parent-${c.id}`,source:c.id,target:c.parentId,type:'es subcódigo de',structural:true})),
-  ...p.relations,
-];
-export const mapSignature = p => JSON.stringify({nodes:mapNodes(p).map(n => [n.id,n.name]),edges:mapEdges(p).map(r => [r.id,r.source,r.target,r.type])});
+export function scopedEdges(p, nodeIds) {
+  return [
+    ...p.codes.filter(c => c.categoryId && nodeIds.has(c.id) && nodeIds.has(c.categoryId)).map(c => ({id:`cat-${c.id}`,source:c.id,target:c.categoryId,type:'es parte de',structural:true})),
+    ...p.codes.filter(c => c.parentId && nodeIds.has(c.id) && nodeIds.has(c.parentId)).map(c => ({id:`parent-${c.id}`,source:c.id,target:c.parentId,type:'es subcódigo de',structural:true})),
+    ...p.relations.filter(r => nodeIds.has(r.source) && nodeIds.has(r.target)),
+  ];
+}
+export const mapSignature = (nodes, edges) => JSON.stringify({nodes:nodes.map(n => [n.id,n.name]),edges:edges.map(r => [r.id,r.source,r.target,r.type])});
 let enginePromise;
-export async function autoLayout(p, mode) {
+export async function autoLayout(nodes, edges, mode) {
   const preset = mapLayouts.find(layout => layout.id === mode);
   if (!preset) throw new Error('Selecciona una organización de mapa válida.');
-  const nodes = mapNodes(p), edges = mapEdges(p);
-  if (!nodes.length) throw new Error('Crea códigos o categorías antes de organizar el mapa.');
+  if (!nodes.length) throw new Error('Este mapa no tiene nodos todavía.');
   enginePromise ||= import('elkjs/lib/elk.bundled.js').then(module => new module.default());
   const engine = await enginePromise;
   const result = await engine.layout({

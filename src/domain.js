@@ -6,7 +6,7 @@ export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => 
 
 export function project(name, question = '') {
   return { schemaVersion: 1, id: uid(), name, question, createdAt: now(), updatedAt: now(),
-    documents: [], codes: [], categories: [], quotes: [], relations: [], prompts: [], history: [], positions: {}, researchQuestions: [] };
+    documents: [], codes: [], categories: [], quotes: [], relations: [], prompts: [], history: [], positions: {}, researchQuestions: [], savedMaps: [] };
 }
 export function log(p, action, detail) {
   p.updatedAt = now();
@@ -44,6 +44,12 @@ export function addQuote(p, documentId, start, end, codeIds, memo = '', research
   log(p, 'Cita codificada', quote.id);
   return quote;
 }
+function validateMapLayout(layout, safeId) {
+  const point = value => value && Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= 0 && value.y >= 0 && value.x <= 100000 && value.y <= 100000;
+  if (!layout || !['orthogonal','tree-right','tree-down','layered-down','radial','manual'].includes(layout.mode) || !['orthogonal','straight'].includes(layout.routing) || !layout.routes || typeof layout.routes !== 'object' || Array.isArray(layout.routes)) return false;
+  for (const [id,route] of Object.entries(layout.routes)) if (!safeId(id) || !route || !Array.isArray(route.points) || route.points.length < 2 || route.points.length > 1000 || route.points.some(value => !point(value)) || (route.label !== undefined && !point(route.label))) return false;
+  return true;
+}
 export function validateProject(p) {
   const fail = () => { throw new Error('Respaldo inválido o incompatible. No se modificaron tus proyectos.'); };
   const str = v => typeof v === 'string';
@@ -56,6 +62,19 @@ export function validateProject(p) {
   if (p.researchQuestions !== undefined) {
     if (!Array.isArray(p.researchQuestions) || p.researchQuestions.some(q => !q || !safeId(q.id) || !str(q.text) || !q.text.trim() || !['Pregunta','Objetivo'].includes(q.kind) || typeof q.archived !== 'boolean')) fail();
     entities.push(...p.researchQuestions);
+  }
+  if (p.savedMaps !== undefined) {
+    if (!Array.isArray(p.savedMaps)) fail();
+    for (const m of p.savedMaps) {
+      if (!m || !safeId(m.id) || !str(m.name) || !m.name.trim() || !str(m.createdAt) || !str(m.updatedAt)) fail();
+      if (!m.scope || !['category','research'].includes(m.scope.type) || !safeId(m.scope.id)) fail();
+      if (m.scope.type === 'category' && !p.categories.some(c => c.id === m.scope.id)) fail();
+      if (m.scope.type === 'research' && !(p.researchQuestions || []).some(q => q.id === m.scope.id)) fail();
+      if (!m.positions || typeof m.positions !== 'object' || Array.isArray(m.positions)) fail();
+      for (const [id, pos] of Object.entries(m.positions)) if (!safeId(id) || !pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y) || pos.x < 0 || pos.y < 0 || pos.x > 100000 || pos.y > 100000) fail();
+      if (m.mapLayout !== undefined && !validateMapLayout(m.mapLayout, safeId)) fail();
+    }
+    entities.push(...p.savedMaps);
   }
   if (new Set(entities.map(e => e.id)).size !== entities.length) fail();
   for (const d of p.documents) if (!str(d.name) || !str(d.text) || !str(d.createdAt)) fail();
@@ -109,13 +128,26 @@ export function validateProject(p) {
   }
   if (!p.positions || typeof p.positions !== 'object' || Array.isArray(p.positions)) fail();
   for (const [id, pos] of Object.entries(p.positions)) if (!nodes.some(n => n.id === id) || !pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y) || pos.x < 0 || pos.y < 0 || pos.x > 100000 || pos.y > 100000) fail();
-  if (p.mapLayout !== undefined) {
-    const layout = p.mapLayout;
-    const point = value => value && Number.isFinite(value.x) && Number.isFinite(value.y) && value.x >= 0 && value.y >= 0 && value.x <= 100000 && value.y <= 100000;
-    if (!layout || !['orthogonal','tree-right','tree-down','layered-down','radial','manual'].includes(layout.mode) || !['orthogonal','straight'].includes(layout.routing) || !layout.routes || typeof layout.routes !== 'object' || Array.isArray(layout.routes)) fail();
-    for (const [id,route] of Object.entries(layout.routes)) if (!safeId(id) || !route || !Array.isArray(route.points) || route.points.length < 2 || route.points.length > 1000 || route.points.some(value => !point(value)) || (route.label !== undefined && !point(route.label))) fail();
-  }
+  if (p.mapLayout !== undefined && !validateMapLayout(p.mapLayout, safeId)) fail();
   return p;
+}
+export function mapScopeNodes(p, scope) {
+  if (scope.type === 'category') {
+    const category = p.categories.find(c => c.id === scope.id);
+    if (!category) throw new Error('La categoría de este mapa ya no existe.');
+    return [{...category,kind:'category'}, ...p.codes.filter(c => c.categoryId === scope.id).map(c => ({...c,kind:'code'}))];
+  }
+  const question = (p.researchQuestions || []).find(q => q.id === scope.id);
+  if (!question) throw new Error('La pregunta u objetivo de este mapa ya no existe.');
+  const codeIds = new Set(p.quotes.filter(q => (q.researchQuestionIds || []).includes(scope.id)).flatMap(q => q.codeIds));
+  const codes = p.codes.filter(c => codeIds.has(c.id));
+  const categoryIds = new Set(codes.map(c => c.categoryId).filter(Boolean));
+  return [...p.categories.filter(c => categoryIds.has(c.id)).map(c => ({...c,kind:'category'})), ...codes.map(c => ({...c,kind:'code'}))];
+}
+export function mapScopeLabel(p, scope) {
+  if (scope.type === 'category') return `Categoría: ${p.categories.find(c => c.id === scope.id)?.name || 'eliminada'}`;
+  const question = (p.researchQuestions || []).find(q => q.id === scope.id);
+  return `${question?.kind || 'Pregunta'}: ${question?.text || 'eliminada'}${question?.archived ? ' (archivada)' : ''}`;
 }
 export function codePath(p, codeId) {
   const code = p.codes.find(c => c.id === codeId);

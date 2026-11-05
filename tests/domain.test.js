@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, decideExternalResult, verifyExternalProposal, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
-import { autoLayout, mapLayouts, mapEdges, edgeGeometry } from '../src/map-layout.js';
+import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, decideExternalResult, verifyExternalProposal, csv, escapeHTML, updateResearchBank, mapScopeNodes, mapScopeLabel } from '../src/domain.js';
+import { autoLayout, mapLayouts, scopedEdges, edgeGeometry } from '../src/map-layout.js';
 
 function config(p, overrides = {}) {
   return { question:'¿Cómo coordinan?',mode:'Inductiva',operation:'Codificar',scope:'quotes',budget:5,codeIds:p.codes.map(c=>c.id),quoteIds:[p.quotes[0].id],documentIds:[], ...overrides };
@@ -89,6 +89,53 @@ test('project backups accept bounded custom relationship labels',()=>{
   assert.equal(validateProject(p),p);
   p.relations[0].type='x'.repeat(121);
   assert.throws(()=>validateProject(p));
+});
+test('saved maps retain independent scopes and layouts through backup restoration',()=>{
+  const p=demoProject();
+  const category=p.categories[0], code=p.codes[0];
+  const stamp=p.createdAt;
+  p.savedMaps=[
+    {id:'map-a',name:'Primero',scope:{type:'category',id:category.id},positions:{[code.id]:{x:80,y:200}},createdAt:stamp,updatedAt:stamp},
+    {id:'map-b',name:'Segundo',scope:{type:'category',id:category.id},positions:{[code.id]:{x:500,y:300}},createdAt:stamp,updatedAt:stamp},
+  ];
+  assert.deepEqual(validateProject(JSON.parse(JSON.stringify(p))),p);
+  for(const change of [
+    copy=>{copy.savedMaps[0].scope.id='missing';},
+    copy=>{copy.savedMaps[0].scope.type='invalid';},
+    copy=>{copy.savedMaps[0].positions[code.id].x=Infinity;},
+    copy=>{copy.savedMaps[0].mapLayout={mode:'unknown',routing:'straight',routes:{}};},
+    copy=>{copy.savedMaps[1].id='map-a';},
+    copy=>{copy.savedMaps[0].id=code.id;},
+    copy=>{copy.savedMaps[0].name=' ';},
+  ]) {
+    const copy=structuredClone(p);change(copy);assert.throws(()=>validateProject(copy));
+  }
+  delete p.savedMaps;
+  assert.equal(validateProject(p),p);
+});
+test('map scopes exclude unrelated categories and codes but retain linked research evidence',()=>{
+  const p=demoProject();
+  const category=p.categories[0];
+  p.categories.push({...category,id:'other-category',name:'Otra'});
+  p.codes.push({...p.codes[0],id:'other-code',categoryId:'other-category'});
+  const scope={type:'category',id:category.id};
+  assert.deepEqual(mapScopeNodes(p,scope).map(n=>n.id),[category.id,p.codes[0].id,p.codes[1].id]);
+  assert.equal(mapScopeLabel(p,scope),`Categoría: ${category.name}`);
+  p.researchQuestions=[{id:'question',kind:'Pregunta',text:'¿Cómo coordinan?',archived:false}];
+  p.quotes[0].researchQuestionIds=['question'];
+  const research={type:'research',id:'question'};
+  const nodes=mapScopeNodes(p,research);
+  assert.deepEqual(nodes.map(n=>n.id),[category.id,p.codes[0].id]);
+  const edges=scopedEdges(p,new Set(nodes.map(n=>n.id)));
+  assert.ok(edges.every(edge=>nodes.some(n=>n.id===edge.source)&&nodes.some(n=>n.id===edge.target)));
+  assert.equal(edges.filter(edge=>!edge.structural).length,0);
+  p.researchQuestions[0].archived=true;
+  assert.match(mapScopeLabel(p,research),/archivada/);
+  assert.deepEqual(mapScopeNodes(p,research),nodes);
+  p.quotes[0].researchQuestionIds=[];
+  assert.deepEqual(mapScopeNodes(p,research),[]);
+  assert.throws(()=>mapScopeNodes(p,{type:'category',id:'missing'}));
+  assert.throws(()=>mapScopeNodes(p,{type:'research',id:'missing'}));
 });
 test('CSV export prevents formula execution and HTML escapes untrusted content',()=>{
   const output=csv([['=HYPERLINK("x")',' +SUM(A1)','Normal;con separador','línea\nnueva']]);
@@ -213,9 +260,12 @@ test('new codes respect deductive restrictions and global budget across imports'
 test('automatic layouts preserve all nodes, relations and evidence with non-overlapping positions',async()=>{
   const p=demoProject();
   const original=structuredClone({codes:p.codes,categories:p.categories,quotes:p.quotes,relations:p.relations});
+  const nodes=[...p.categories,...p.codes];
+  const nodeIds=new Set(nodes.map(n=>n.id));
+  const edges=scopedEdges(p,nodeIds);
   for (const preset of mapLayouts) {
-    const result=await autoLayout(p,preset.id);
-    Object.assign(p,result);
+    const result=await autoLayout(nodes,edges,preset.id);
+    p.positions=result.positions;p.mapLayout=result.mapLayout;
     validateProject(JSON.parse(JSON.stringify(p)));
     assert.deepEqual({codes:p.codes,categories:p.categories,quotes:p.quotes,relations:p.relations},original);
     const positions=Object.values(result.positions);
@@ -224,7 +274,7 @@ test('automatic layouts preserve all nodes, relations and evidence with non-over
       const pos=positions[index];
       assert.ok(pos.x+280<=other.x || other.x+280<=pos.x || pos.y+100<=other.y || other.y+100<=pos.y,`${preset.name}: nodos solapados`);
     }
-    for (const edge of mapEdges(p)) assert.ok(result.mapLayout.routes[edge.id],`Ruta ausente: ${edge.id}`);
+    for (const edge of edges) assert.ok(result.mapLayout.routes[edge.id],`Ruta ausente: ${edge.id}`);
     if(preset.id==='orthogonal') for(const route of Object.values(result.mapLayout.routes)) for(let index=1;index<route.points.length;index++)assert.ok(route.points[index].x===route.points[index-1].x || route.points[index].y===route.points[index-1].y);
   }
 });
@@ -232,7 +282,11 @@ test('automatic layouts handle disconnected nodes, cycles and maps beyond legacy
   const p=demoProject();
   p.relations.push({id:'cycle',source:p.codes[1].id,target:p.codes[0].id,type:'contradice',memo:'Ciclo interpretativo',quoteIds:[]});
   for(let index=0;index<40;index++)p.codes.push({...p.codes[0],id:`isolated-${index}`,name:`Código aislado ${index}`,categoryId:null,parentId:null});
-  Object.assign(p,await autoLayout(p,'orthogonal'));
+  const nodes=[...p.categories,...p.codes];
+  const nodeIds=new Set(nodes.map(n=>n.id));
+  const edges=scopedEdges(p,nodeIds);
+  const result=await autoLayout(nodes,edges,'orthogonal');
+  p.positions=result.positions;p.mapLayout=result.mapLayout;
   validateProject(p);
   assert.equal(Object.keys(p.positions).length,43);
   p.positions[p.codes[0].id]={x:5000,y:3000};
@@ -240,8 +294,8 @@ test('automatic layouts handle disconnected nodes, cycles and maps beyond legacy
   validateProject(JSON.parse(JSON.stringify(p)));
   assert.throws(()=>validateProject({...p,mapLayout:{mode:'unknown',routing:'orthogonal',routes:{}}}));
   assert.throws(()=>validateProject({...p,mapLayout:{mode:'orthogonal',routing:'orthogonal',routes:{bad:{points:[{x:NaN,y:0},{x:0,y:1}]}}}}));
-  await assert.rejects(()=>autoLayout(p,'unknown'));
-  await assert.rejects(()=>autoLayout(project('Vacío'),'orthogonal'));
+  await assert.rejects(()=>autoLayout(nodes,edges,'unknown'));
+  await assert.rejects(()=>autoLayout([],[],'orthogonal'));
 });
 test('edge geometry preserves routed bends and keeps orthogonal fallback labels horizontal',()=>{
   const source={x:0,y:0},target={x:600,y:200};

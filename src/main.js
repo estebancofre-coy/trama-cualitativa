@@ -8,12 +8,16 @@ import '@fontsource/libre-baskerville/latin-400-italic.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import { createElement, FileText, Tags, Quote, GitBranch, SquarePen, ClipboardCheck, History, Plus, Download, Upload, Undo2, Settings2, Pencil, Trash2, X, Check, Copy, FolderOpen, HelpCircle, Maximize2, Network, Link2, Clock, CircleAlert } from 'lucide';
 import brandMark from './assets/trama-qda-mark.svg?inline';
-import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, verifyExternalProposal, decideExternalResult, csv, demoProject, updateResearchBank } from './domain.js';
+import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, verifyExternalProposal, decideExternalResult, csv, demoProject, updateResearchBank, mapScopeNodes, mapScopeLabel } from './domain.js';
 import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal } from './storage.js';
-import { autoLayout, mapLayouts, mapEdges, mapSignature, edgeGeometry } from './map-layout.js';
+import { autoLayout, mapLayouts, scopedEdges, mapSignature, edgeGeometry } from './map-layout.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
+const urlParams = new URLSearchParams(window.location.search);
+const popupMapId = window.__TRAMA_WINDOW__?.mapId || urlParams.get('mapWindow');
+const popupProjectId = window.__TRAMA_WINDOW__?.projectId || urlParams.get('project');
+const syncChannel = 'BroadcastChannel' in window ? new BroadcastChannel('trama-qda-sync') : null;
 let projects = [];
 let current;
 let tab = 'documents';
@@ -38,19 +42,24 @@ let mapConnecting = false;
 let mapSource;
 let mapQuickOpen = true;
 let mapClassicOpen = false;
+let mapWindows = {};
+let syncPending = false;
+let dirtyForm = false;
 const privacySummary = cloudMode ? 'Instalación privada · Drive y Sheets · Sin IA integrada.' : 'Sin IA integrada. Sin envío de entrevistas.';
 const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['quotes', 'Citas e insertos'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['review', 'Revisión externa'], ['history', 'Bitácora']];
 const findCode = id => current.codes.find(c => c.id === id);
 const findNode = id => [...current.categories, ...current.codes].find(c => c.id === id);
+const activeSavedMap = () => (current?.savedMaps || []).find(m => m.id === popupMapId);
 const activeResearch = () => (current.researchQuestions || []).filter(q => !q.archived);
 const researchItems = () => activeResearch().map(q => ({id:q.id,name:`${q.kind}: ${q.text}`}));
 const researchText = quote => (current.researchQuestions || []).filter(q => (quote.researchQuestionIds || []).includes(q.id)).map(q => `${q.kind}: ${q.text}${q.archived?' (archivado)':''}`).join(' · ');
 const icon = shape => createElement(shape,{width:'16',height:'16',class:'ui-icon','aria-hidden':'true',focusable:'false'}).outerHTML;
-const actionIcons = {'new-project':Plus,'new-code':Plus,'new-category':Plus,'new-relation':Plus,'backup':Download,'restore':Upload,'import-document':Upload,'paste-document':FileText,'edit-project':Settings2,'undo':Undo2,'help':HelpCircle,'close-dialog':X,'edit-code':Pencil,'edit-category':Pencil,'edit-quote':Pencil,'edit-relation':Pencil,'delete-quote':Trash2,'delete-relation':Trash2,'export-book':Download,'export-quotes':Download,'export-report':Download,'export-map':Download,'export-map-png':Download,'download-prompt':Download,'copy-prompt':Copy,'organize-map':Network,'connect-map':Link2,'fit-map':Maximize2,'import-results':Upload,'choose-results':FolderOpen,'accept-result':Check,'reject-result':X,'result-source':FileText,'source':FileText,'cloud-panel':FolderOpen,'recovery':History,'load-prompt':FolderOpen};
+const actionIcons = {'new-project':Plus,'new-code':Plus,'new-category':Plus,'new-relation':Plus,'new-map':Plus,'backup':Download,'restore':Upload,'import-document':Upload,'paste-document':FileText,'edit-project':Settings2,'undo':Undo2,'help':HelpCircle,'close-dialog':X,'edit-code':Pencil,'edit-category':Pencil,'edit-quote':Pencil,'edit-relation':Pencil,'delete-quote':Trash2,'delete-relation':Trash2,'delete-map':Trash2,'export-book':Download,'export-quotes':Download,'export-report':Download,'export-map':Download,'export-map-png':Download,'download-prompt':Download,'copy-prompt':Copy,'organize-map':Network,'connect-map':Link2,'fit-map':Maximize2,'import-results':Upload,'choose-results':FolderOpen,'accept-result':Check,'reject-result':X,'result-source':FileText,'source':FileText,'cloud-panel':FolderOpen,'recovery':History,'load-prompt':FolderOpen,'open-map':FolderOpen,'save-map-window':Check,'close-map-window':X};
 const button = (action, text, cls = '', attrs = '') => {
   const prefix = actionIcons[action] ? text.match(/^[+↑↓↶✓]\s*/)?.[0] || '' : '';
   return `<button type="button" class="${cls}" data-action="${action}" ${attrs} ${attrs.includes('title=')?'':`title="${e(text)}"`}>${actionIcons[action]?icon(actionIcons[action]):''}<span>${prefix?`<span class="sr-only">${prefix}</span>`:''}${text.slice(prefix.length)}</span></button>`;
 };
+const mapTip = (action, label, tip, shape = 'circle', attrs = '') => `<button type="button" class="icon-btn ${shape}" data-action="${action}" data-tip="${e(tip)}" aria-label="${e(label)}" ${attrs}>${actionIcons[action] ? icon(actionIcons[action]) : `<span class="icon-btn-text">${e(label)}</span>`}</button>`;
 const brand = `<img class="brand-mark" src="${brandMark}" alt="" width="40" height="40"><div><span class="brand-name">TRAMA<span class="brand-suffix">-QDA</span></span><small>análisis cualitativo</small></div>`;
 const empty = (title, text, action = '') => `<div class="empty"><span class="empty-symbol" aria-hidden="true">◇</span><h2>${title}</h2><p>${text}</p>${action}</div>`;
 const options = (items, selected = '', blank = '') => (blank ? `<option value="">${blank}</option>` : '') + items.map(item => `<option value="${e(item.id)}" ${item.id === selected ? 'selected' : ''}>${e(item.name)}</option>`).join('');
@@ -75,11 +84,19 @@ async function mutate(action, { recordUndo = true } = {}) {
   const next = structuredClone(current);
   try {
     action(next);
-    if (next.mapLayout && mapSignature(before) !== mapSignature(next)) next.mapLayout.routes = {};
+    for (const map of next.savedMaps || []) {
+      const nodes = mapScopeNodes(next, map.scope);
+      const beforeMap = (before.savedMaps || []).find(m => m.id === map.id);
+      const beforeNodes = beforeMap ? mapScopeNodes(before, beforeMap.scope) : [];
+      const sigBefore = mapSignature(beforeNodes, scopedEdges(before, new Set(beforeNodes.map(n => n.id))));
+      const sigAfter = mapSignature(nodes, scopedEdges(next, new Set(nodes.map(n => n.id))));
+      if (map.mapLayout && sigBefore !== sigAfter) map.mapLayout.routes = {};
+    }
     validateProject(next);
     const saved = await saveProject(next, current.updatedAt);
     current = saved;
     projects = projects.map(p => p.id === saved.id ? saved : p);
+    syncChannel?.postMessage({ projectId: saved.id, updatedAt: saved.updatedAt });
     if (recordUndo) {
       undoSnapshot = before;
       undoProjectId = saved.id;
@@ -98,7 +115,7 @@ async function mutate(action, { recordUndo = true } = {}) {
       throw new Error(`No se confirmó el guardado en Drive. El intento se conserva en Recuperación local. ${error.message}`, { cause: error });
     }
     throw new Error(`No se guardaron los cambios: ${error.message}`, { cause: error });
-  } finally { saving = false; updateSaveState(); }
+  } finally { saving = false; updateSaveState(); if (syncPending) refreshSyncedProject(); }
 }
 function updateSaveState() {
   const status=document.querySelector('#save-state');
@@ -128,6 +145,8 @@ function checklist(name, items, selected = []) {
   return items.length ? `<div class="checklist">${items.map(item => `<label><input type="checkbox" name="${name}" value="${e(item.id)}" ${selected.includes(item.id) ? 'checked' : ''}><span>${e(item.name)}</span></label>`).join('')}</div>` : '<p class="muted">No hay elementos disponibles.</p>';
 }
 function render() {
+  dirtyForm = false;
+  if (popupMapId) { renderMapWindow(); return; }
   if (!current) { welcome(); return; }
   const canUndo = Boolean(undoSnapshot && current.id === undoProjectId);
   const undoControl = button('undo', '↶ Deshacer', 'quiet light', canUndo
@@ -143,19 +162,18 @@ function render() {
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
-      <div class="page-heading"><div><h2>${tabs.find(t => t[0] === tab)[1]}</h2><p>${({documents:'De la voz a la evidencia. Selecciona un fragmento y asígnale códigos.',book:'Define, organiza y afina tu interpretación sin perder el origen.',quotes:'Sigue el recorrido categoría → código → cita → documento.',map:'Conecta conceptos. Abre sus citas para volver a la evidencia.',prompts:'Preguntas elegidas, corpus acotado. Tú decides el alcance de cada solicitud.',review:'Propuestas externas y decisiones de revisión.',history:'Registro de cambios y solicitudes de este proyecto.'})[tab]}</p></div><div class="actions">${tabActions()}</div></div>
-      <section id="workspace">${({documents:documentsView, book:bookView, quotes:quotesView, map:mapView, prompts:promptsView, review:reviewView, history:historyView})[tab]()}</section>
+      <div class="page-heading"><div><h2>${tabs.find(t => t[0] === tab)[1]}</h2><p>${({documents:'De la voz a la evidencia. Selecciona un fragmento y asígnale códigos.',book:'Define, organiza y afina tu interpretación sin perder el origen.',quotes:'Sigue el recorrido categoría → código → cita → documento.',map:'Abre uno o varios mapas en ventanas propias, conectadas en vivo con el proyecto.',prompts:'Preguntas elegidas, corpus acotado. Tú decides el alcance de cada solicitud.',review:'Propuestas externas y decisiones de revisión.',history:'Registro de cambios y solicitudes de este proyecto.'})[tab]}</p></div><div class="actions">${tabActions()}</div></div>
+      <section id="workspace">${({documents:documentsView, book:bookView, quotes:quotesView, map:mapSelectorView, prompts:promptsView, review:reviewView, history:historyView})[tab]()}</section>
       <footer class="workspace-footer">TRAMA-QDA · ${cloudMode ? 'Drive privado' : 'Trabajo local'}, interpretación humana.<span>${current.codes.length} códigos · ${current.categories.length} categorías · ${current.quotes.length} citas</span></footer>
     </main></div>`;
   if (tab === 'documents') setupSelection();
   if (tab === 'prompts') setupPrompt();
-  if (tab === 'map') setupMap();
 }
 function tabActions() {
   if (tab === 'documents') return button('paste-document', 'Pegar entrevista') + button('import-document', '↑ Importar TXT / DOCX', 'primary');
   if (tab === 'book') return button('export-book', '↓ Libro CSV') + button('new-category', '+ Categoría') + button('new-code', '+ Código', 'primary');
   if (tab === 'quotes') return button('export-quotes', '↓ Matriz CSV') + button('export-report', '↓ Insertos HTML', 'primary');
-  if (tab === 'map') return button('export-map', '↓ Mapa SVG') + button('export-map-png', '↓ Mapa PNG');
+  if (tab === 'map') return button('new-map', '+ Crear mapa', 'primary');
   if (tab === 'review' || tab === 'prompts') return button('import-results', '↑ Importar resultados JSON', 'primary');
   return '';
 }
@@ -355,33 +373,96 @@ function exportReport() {
   download(`${fileName(current.name)}-insertos.html`,html,'text/html;charset=utf-8');
   notify('Insertos descargados. Ábrelos en Word o en el navegador; puedes imprimir a PDF.');
 }
-function quickRelationsView() {
-  const nodes=[...current.categories.map(node=>({...node,kind:'Categoría'})),...current.codes.map(node=>({...node,kind:'Código'}))];
+function quickRelationsView(scopeNodes) {
+  const nodes=scopeNodes.map(node=>({...node,kind:node.kind==='category'?'Categoría':'Código'}));
   const picker=name=>`<label class="quick-search"><span class="sr-only">${name==='source'?'Buscar origen':'Buscar destino'}</span><input type="search" data-node-search="${name}" placeholder="Buscar código o categoría"></label><div class="quick-node-options">${nodes.map(node=>`<label class="quick-node"><input type="radio" name="${name}" value="${node.id}" required><span><small>${node.kind}</small><strong>${e(node.name)}</strong></span><i class="code-dot" style="background:${node.color}" aria-hidden="true"></i></label>`).join('')}</div>`;
   return `<aside class="map-builder"><details class="map-quick" open><summary>Relación rápida</summary><form id="quick-relation-form"><fieldset><legend>Origen</legend>${picker('source')}</fieldset><fieldset><legend>Destino</legend>${picker('target')}</fieldset><fieldset><legend>Vínculo</legend><div class="quick-relation-types">${relationTypes.map((type,index)=>`<label><input type="radio" name="type" value="${e(type)}" ${index===0?'checked':''}><span>${e(type)}</span></label>`).join('')}<label><input type="radio" name="type" value="custom"><span>Texto personalizado</span></label></div></fieldset><label>Nombre personalizado de la relación<input name="customType" maxlength="120" disabled></label>${textarea('Fundamento de la relación','memo','',3)}<details class="quick-evidence"><summary>Citas de respaldo</summary>${checklist('quoteIds',current.quotes.map(quote=>({id:quote.id,name:`${location(current,quote)}: ${quote.text.slice(0,100)}`})))}</details><button type="submit" class="primary full">${icon(Plus)}Crear relación</button><p class="form-error" role="alert"></p></form></details><details class="map-classic"><summary>Construcción con desplegables</summary>${button('new-relation','+ Relación','full')}</details></aside>`;
 }
-function mapView() {
-  const nodes = [...current.categories.map(c => ({...c,kind:'category'})), ...current.codes.map(c => ({...c,kind:'code'}))];
-  if (!nodes.length) return empty('Conecta tu interpretación', 'Crea códigos y categorías en el libro. Aquí aparecerán como nodos vinculados a la evidencia.',button('go-book','Ir al libro de códigos','primary'));
-  const edges = mapEdges(current);
-  const categoryRows = Math.ceil(current.categories.length / 3);
+function mapSelectorView() {
+  const maps = current.savedMaps || [];
+  if (!maps.length) return empty('Crea tu primer mapa', 'Un mapa reúne los nodos de una categoría, o los códigos de una pregunta u objetivo, en una ventana propia conectada en vivo con este proyecto. Puedes abrir varios mapas en paralelo.', button('new-map', '+ Crear mapa', 'primary'));
+  return `<div class="map-gallery">${maps.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(m => {
+    let count = 0, broken = false;
+    try { count = mapScopeNodes(current, m.scope).length; } catch { broken = true; }
+    return `<article class="map-card"><h3>${e(m.name)}</h3><p>${e(mapScopeLabel(current, m.scope))}</p><p class="muted">${broken ? 'Alcance ya no disponible' : `${count} nodos`} · Actualizado ${new Date(m.updatedAt).toLocaleString('es-CL')}</p><div class="actions">${button('open-map', 'Abrir mapa', 'primary', `data-id="${m.id}"`)}${button('delete-map', 'Eliminar', 'quiet danger', `data-id="${m.id}"`)}</div></article>`;
+  }).join('')}</div>`;
+}
+function newMapDialog() {
+  const categories = current.categories;
+  const questions = (current.researchQuestions || []).filter(q => !q.archived);
+  if (!categories.length && !questions.length) throw new Error('Crea al menos una categoría, o una pregunta u objetivo, antes de crear un mapa.');
+  modal('Crear mapa de relaciones', `<label>Nombre del mapa<input name="name" maxlength="120" required placeholder="p. ej., Articulación institucional"></label><fieldset class="map-scope-options"><legend>Alcance del mapa</legend><label><input type="radio" name="scopeType" value="category" ${categories.length ? 'checked' : 'disabled'}><span>Una categoría y sus códigos</span></label><label><input type="radio" name="scopeType" value="research" ${categories.length ? '' : 'checked'} ${questions.length ? '' : 'disabled'}><span>Códigos de una pregunta u objetivo</span></label></fieldset><label data-scope-field="category">Categoría<select name="categoryId">${options(categories, '', 'Seleccionar categoría')}</select></label><label data-scope-field="research" hidden>Pregunta / objetivo<select name="researchId">${options(questions.map(q => ({id:q.id,name:`${q.kind}: ${q.text}`})), '', 'Seleccionar pregunta u objetivo')}</select></label>`, async form => {
+    const name = form.get('name').trim();
+    if (!name) throw new Error('Escribe un nombre para el mapa.');
+    const scopeType = form.get('scopeType');
+    const scopeId = scopeType === 'category' ? form.get('categoryId') : form.get('researchId');
+    if (!scopeId) throw new Error('Selecciona el alcance del mapa.');
+    const id = uid(), stamp = now();
+    const win = openMapWindow(id);
+    try {
+      await mutate(p => { p.savedMaps ??= []; p.savedMaps.push({id,name,scope:{type:scopeType,id:scopeId},positions:{},createdAt:stamp,updatedAt:stamp}); log(p, 'Mapa creado', name); });
+      if (win) win.location.href = mapWindowURL(id);
+    } catch (error) { win?.close(); delete mapWindows[`${current.id}:${id}`]; throw error; }
+  }, 'Crear y abrir');
+  const update = () => {
+    const type = dialog.querySelector('[name=scopeType]:checked')?.value;
+    dialog.querySelector('[data-scope-field=category]').hidden = type !== 'category';
+    dialog.querySelector('[data-scope-field=research]').hidden = type !== 'research';
+  };
+  dialog.querySelectorAll('[name=scopeType]').forEach(input => input.addEventListener('change', update));
+  update();
+}
+function mapWindowURL(mapId) {
+  const url = new URL(window.__TRAMA_WINDOW__?.appUrl || window.location.href);
+  url.search = `?mapWindow=${encodeURIComponent(mapId)}&project=${encodeURIComponent(current.id)}`;
+  return url.toString();
+}
+function openMapWindow(mapId) {
+  const key = `${current.id}:${mapId}`;
+  const existing = mapWindows[key];
+  if (existing && !existing.closed) { existing.focus(); return existing; }
+  const saved = (current.savedMaps || []).some(m => m.id === mapId);
+  const win = window.open(saved ? mapWindowURL(mapId) : 'about:blank', `map-${current.id}-${mapId}`, 'width=1180,height=820');
+  if (win) mapWindows[key] = win;
+  else notify('El navegador bloqueó la ventana emergente. Permite ventanas emergentes para este sitio.', true);
+  return win;
+}
+function renderMapWindow() {
+  const map = activeSavedMap();
+  if (!current || !map) {
+    app.innerHTML = `<main class="welcome"><h1>Este mapa ya no está disponible</h1><p>Puede haber sido eliminado desde la ventana principal.</p><button type="button" data-action="close-map-window">Cerrar ventana</button></main>`;
+    return;
+  }
+  document.title = `${map.name} · TRAMA-QDA`;
+  let nodes = [], scopeError;
+  try { nodes = mapScopeNodes(current, map.scope); } catch (error) { scopeError = error; }
+  const unavailable = scopeError || !nodes.length ? 'disabled' : '';
+  app.innerHTML = `<div class="map-window"><header class="map-window-bar"><div class="map-window-title"><strong>${e(map.name)}</strong><span>${e(mapScopeLabel(current, map.scope))}</span><p id="save-state" role="status">${storageLabel()}</p></div><div class="map-window-tools">${mapTip('save-map-window', 'Guardar mapa', 'Renombrar y guardar; los cambios se guardan automáticamente')}${mapTip('connect-map', 'Conectar nodos', 'Selecciona el nodo de origen y luego el de destino', 'square', `${unavailable} aria-pressed="${mapConnecting}"`)}${mapTip('fit-map', 'Ajustar a pantalla', 'Ajustar el mapa a la ventana', 'square', unavailable)}${mapTip('export-map', '↓ Mapa SVG', 'Descargar este mapa como SVG', 'square', unavailable)}${mapTip('export-map-png', '↓ Mapa PNG', 'Descargar este mapa como imagen PNG', 'square', unavailable)}${mapTip('close-map-window', 'Cerrar ventana', 'Cerrar esta ventana', 'square')}</div></header><div class="map-window-body">${scopeError ? empty('Alcance no disponible', e(scopeError.message)) : mapEditorView(map, nodes)}</div></div>`;
+  if (!scopeError) setupMapEditor(map, nodes);
+}
+function mapEditorView(map, nodes) {
+  if (!nodes.length) return empty('Sin nodos en este alcance', 'Agrega códigos a esta categoría, o etiqueta citas con esta pregunta u objetivo, desde la ventana principal del proyecto.');
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const edges = scopedEdges(current, nodeIds);
+  const categoryNodes = nodes.filter(n => n.kind === 'category'), codeNodes = nodes.filter(n => n.kind === 'code');
+  const categoryRows = Math.ceil(categoryNodes.length / 3);
   const positions = Object.fromEntries(nodes.map(n => {
-    const index = n.kind === 'category' ? current.categories.findIndex(c => c.id === n.id) : current.codes.findIndex(c => c.id === n.id);
-    const initial = { x: n.kind === 'category' && current.categories.length === 1 ? 440 : 70 + (index % 3) * 370, y: 65 + Math.floor(index / 3) * 190 + (n.kind === 'code' ? Math.max(1, categoryRows) * 230 : 0) };
-    return [n.id, current.positions[n.id] || initial];
+    const index = n.kind === 'category' ? categoryNodes.findIndex(c => c.id === n.id) : codeNodes.findIndex(c => c.id === n.id);
+    const initial = { x: n.kind === 'category' && categoryNodes.length === 1 ? 440 : 70 + (index % 3) * 370, y: 65 + Math.floor(index / 3) * 190 + (n.kind === 'code' ? Math.max(1, categoryRows) * 230 : 0) };
+    return [n.id, map.positions[n.id] || initial];
   }));
   const svgNodes = nodes.map(n => {
-    const pos = positions[n.id]; const count = current.quotes.filter(q => q.codeIds.includes(n.id) || q.codeIds.some(id => findCode(id)?.categoryId === n.id)).length;
+    const pos = positions[n.id]; const count = current.quotes.filter(q => (map.scope.type !== 'research' || (q.researchQuestionIds || []).includes(map.scope.id)) && (q.codeIds.includes(n.id) || q.codeIds.some(id => findCode(id)?.categoryId === n.id))).length;
     const lines = wrap(n.name,27).slice(0,3);
-    return `<g class="map-node" data-node="${n.id}" data-kind="${n.kind}" transform="translate(${pos.x} ${pos.y})" tabindex="0" role="button" aria-label="${e(n.name)}, ${count} citas. Enter para abrir citas." style="--code-color:${n.color}"><title>${e(n.name)}</title><rect width="280" height="100" rx="${n.kind==='category'?2:6}" fill="${n.kind === 'category' ? '#16302b' : '#ffffff'}" stroke="${n.color}" stroke-width="${n.kind === 'category' ? 2 : 1}"/><text x="16" y="21" class="node-kind">${n.kind === 'category' ? 'CATEGORÍA' : 'CÓDIGO'} · ${count} citas</text>${lines.map((line,i) => `<text x="16" y="${43+i*18}" class="node-name" ${line.length>30?'textLength="248" lengthAdjust="spacingAndGlyphs"':''}>${e(line)}</text>`).join('')}</g>`;
+    return `<g class="map-node" data-node="${n.id}" data-kind="${n.kind}" transform="translate(${pos.x} ${pos.y})" tabindex="0" role="button" aria-label="${e(n.name)}, ${count} citas." style="--code-color:${n.color}"><title>${e(n.name)}</title><rect width="280" height="100" rx="${n.kind==='category'?2:6}" fill="${n.kind === 'category' ? '#16302b' : '#ffffff'}" stroke="${n.color}" stroke-width="${n.kind === 'category' ? 2 : 1}"/><text x="16" y="21" class="node-kind">${n.kind === 'category' ? 'CATEGORÍA' : 'CÓDIGO'} · ${count} citas</text>${lines.map((line,i) => `<text x="16" y="${43+i*18}" class="node-name" ${line.length>30?'textLength="248" lengthAdjust="spacingAndGlyphs"':''}>${e(line)}</text>`).join('')}</g>`;
   }).join('');
-  const routePoints = Object.values(current.mapLayout?.routes || {}).flatMap(route => [...route.points,...(route.label ? [route.label] : [])]);
+  const routePoints = Object.values(map.mapLayout?.routes || {}).flatMap(route => [...route.points,...(route.label ? [route.label] : [])]);
   const maxX = Math.max(600,...Object.values(positions).map(pos=>pos.x+340),...routePoints.map(point=>point.x+100));
   const maxY = Math.max(450,...Object.values(positions).map(pos=>pos.y+160),...routePoints.map(point=>point.y+60));
-  const preset = current.mapLayout?.mode || 'manual';
-  const controls = `<div class="map-controls"><label>Organización<select id="map-layout">${mapLayouts.map(layout=>`<option value="${layout.id}" ${preset===layout.id?'selected':''}>${layout.name}</option>`).join('')}</select></label>${button('organize-map',mapOrganizing?'Organizando…':'Organizar mapa','',mapOrganizing?'disabled':'')}${button('connect-map','Conectar nodos','quiet',`aria-pressed="${mapConnecting}"`)}<label>Conexiones<select id="map-routing"><option value="straight" ${current.mapLayout?.routing!=='orthogonal'?'selected':''}>Rectas</option><option value="orthogonal" ${current.mapLayout?.routing==='orthogonal'?'selected':''}>Ortogonales</option></select></label>${button('fit-map','Ajustar a pantalla','quiet')}<label>Zoom<select id="map-zoom"><option value="1" selected>100%</option><option value="0.75">75%</option><option value="0.5">50%</option><option value="1.25">125%</option></select></label></div>`;
+  const preset = map.mapLayout?.mode || 'manual';
+  const controls = `<div class="map-controls"><label>Organización<select id="map-layout">${mapLayouts.map(layout=>`<option value="${layout.id}" ${preset===layout.id?'selected':''}>${layout.name}</option>`).join('')}</select></label>${button('organize-map',mapOrganizing?'Organizando…':'Organizar mapa','',mapOrganizing?'disabled':'')}<label>Conexiones<select id="map-routing"><option value="straight" ${map.mapLayout?.routing!=='orthogonal'?'selected':''}>Rectas</option><option value="orthogonal" ${map.mapLayout?.routing==='orthogonal'?'selected':''}>Ortogonales</option></select></label><label>Zoom<select id="map-zoom"><option value="1" selected>100%</option><option value="0.75">75%</option><option value="0.5">50%</option><option value="1.25">125%</option></select></label></div>`;
   const svgEdges = edges.map((relation,index) => `<g class="map-edge ${relation.structural?'structural':'editable'}" data-source="${relation.source}" data-target="${relation.target}" data-edge="${relation.id}" ${relation.structural?'':`data-action="edit-relation" data-id="${relation.id}" tabindex="0" role="button" aria-label="Editar relación: ${e(relation.type)}"`}><title>${e(relation.type)}</title><path class="edge-hit" fill="none" stroke="transparent" stroke-width="16"/><path id="edge-${index}" class="edge-path" fill="none" stroke="${relation.structural?'#98adb5':'#486572'}" ${relation.structural?'stroke-dasharray="6 5"':''} stroke-width="1.5" marker-end="url(#arrow)"/><text class="edge-label" text-anchor="middle">${e(relation.type)}</text></g>`).join('');
-  return `<div class="map-toolbar">${controls}<span><span class="line-key"></span> Jerarquía del libro <span class="line-key solid"></span> Relación interpretativa</span></div><div class="map-workbench">${quickRelationsView()}<div class="map-scroll"><svg id="relation-map" xmlns="http://www.w3.org/2000/svg" width="${maxX}" height="${maxY}" viewBox="0 0 ${maxX} ${maxY}" role="img" aria-label="Mapa de categorías y códigos"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#607985"/></marker></defs>${svgEdges}${svgNodes}</svg></div></div><div class="relationship-list"><h3>Relaciones interpretativas <span>${current.relations.length}</span></h3>${current.relations.map(relation => `<article><div><strong>${e(findNode(relation.source).name)}</strong> <span>${e(relation.type)} →</span> <strong>${e(findNode(relation.target).name)}</strong><p>${e(relation.memo || 'Sin memo interpretativo')} · ${relation.quoteIds.length} citas de respaldo</p></div>${button('edit-relation','Revisar','quiet',`data-id="${relation.id}"`)}${button('delete-relation','Eliminar','quiet danger',`data-id="${relation.id}"`)}</article>`).join('') || '<p class="muted">Sin relaciones interpretativas.</p>'}</div>`;
+  return `<div class="map-toolbar">${controls}<span><span class="line-key"></span> Jerarquía del libro <span class="line-key solid"></span> Relación interpretativa</span></div><div class="map-workbench">${quickRelationsView(nodes)}<div class="map-scroll"><svg id="relation-map" xmlns="http://www.w3.org/2000/svg" width="${maxX}" height="${maxY}" viewBox="0 0 ${maxX} ${maxY}" role="img" aria-label="Mapa de categorías y códigos"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#607985"/></marker></defs>${svgEdges}${svgNodes}</svg></div></div><div class="relationship-list"><h3>Relaciones interpretativas <span>${edges.filter(r=>!r.structural).length}</span></h3>${edges.filter(r=>!r.structural).map(relation => `<article><div><strong>${e(findNode(relation.source).name)}</strong> <span>${e(relation.type)} →</span> <strong>${e(findNode(relation.target).name)}</strong><p>${e(relation.memo || 'Sin memo interpretativo')} · ${relation.quoteIds.length} citas de respaldo</p></div>${button('edit-relation','Revisar','quiet',`data-id="${relation.id}"`)}${button('delete-relation','Eliminar','quiet danger',`data-id="${relation.id}"`)}</article>`).join('') || '<p class="muted">Sin relaciones interpretativas en este alcance.</p>'}</div>`;
 }
 function wrap(text, length) {
   const words = text.split(/\s+/); const lines = [''];
@@ -413,7 +494,7 @@ function mapExportImage() {
 }
 function exportMap() {
   const {source}=mapExportImage();
-  download(`${fileName(current.name)}-mapa.svg`,source,'image/svg+xml');
+  download(`${fileName(activeSavedMap()?.name || current.name)}-mapa.svg`,source,'image/svg+xml');
 }
 async function exportMapPNG() {
   await document.fonts.ready;
@@ -433,12 +514,20 @@ async function exportMapPNG() {
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
     if(!blob)throw new Error('No se pudo generar el PNG. Usa la exportación SVG.');
     const downloadURL=URL.createObjectURL(blob);
-    const link=document.createElement('a');link.href=downloadURL;link.download=`${fileName(current.name)}-mapa.png`;link.click();
+    const link=document.createElement('a');link.href=downloadURL;link.download=`${fileName(activeSavedMap()?.name || current.name)}-mapa.png`;link.click();
     setTimeout(()=>URL.revokeObjectURL(downloadURL),1000);
     notify(`Mapa PNG exportado: ${canvas.width} × ${canvas.height} píxeles.`);
   } finally {URL.revokeObjectURL(url);}
 }
-function setupMap() {
+async function mutateSavedMap(fn) {
+  await mutate(p => {
+    const map = (p.savedMaps || []).find(m => m.id === popupMapId);
+    if (!map) throw new Error('Este mapa ya no existe.');
+    fn(p, map);
+    map.updatedAt = now();
+  });
+}
+function setupMapEditor(map, nodes) {
   const svg = document.querySelector('#relation-map');
   if (!svg) return;
   setupQuickRelations(svg);
@@ -450,8 +539,8 @@ function setupMap() {
   let useSavedRoutes = true;
   const updateEdges = () => svg.querySelectorAll('.map-edge').forEach(edge => {
     const a=positions[edge.dataset.source], b=positions[edge.dataset.target];
-    const route = useSavedRoutes ? current.mapLayout?.routes?.[edge.dataset.edge] : undefined;
-    const geometry = edgeGeometry(a,b,current.mapLayout?.routing || 'straight',route);
+    const route = useSavedRoutes ? map.mapLayout?.routes?.[edge.dataset.edge] : undefined;
+    const geometry = edgeGeometry(a,b,map.mapLayout?.routing || 'straight',route);
     edge.querySelectorAll('path').forEach(path=>path.setAttribute('d',geometry.path));
     edge.querySelector('text').setAttribute('transform',`translate(${geometry.label.x} ${geometry.label.y})`);
     const label = edge.querySelector('text').getBBox();
@@ -462,7 +551,7 @@ function setupMap() {
   updateEdges();
   svg.querySelectorAll('.map-edge.editable').forEach(edge=>edge.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();relationDialog(edge.dataset.id);}}));
   document.querySelector('#map-routing').addEventListener('change',async event=>{
-    try {await mutate(p=>{p.mapLayout={mode:p.mapLayout?.mode || 'manual',routing:event.target.value,routes:{}};log(p,'Conexiones del mapa actualizadas',event.target.value);});}
+    try {await mutateSavedMap((p,m)=>{m.mapLayout={mode:m.mapLayout?.mode || 'manual',routing:event.target.value,routes:{}};log(p,'Conexiones del mapa actualizadas',event.target.value);});}
     catch(error){report(error);render();}
   });
   document.querySelector('#map-zoom').addEventListener('change',event=>{
@@ -493,7 +582,7 @@ function setupMap() {
       if (!drag) return;
       const moved=drag.moved; drag=null;
       if (!moved) return;
-      try { await mutate(p => { p.positions[node.dataset.node]=positions[node.dataset.node]; if(p.mapLayout)p.mapLayout.routes={}; log(p,'Nodo reubicado',node.dataset.node); }); }
+      try { await mutateSavedMap((p,m) => { m.positions[node.dataset.node]=positions[node.dataset.node]; if(m.mapLayout)m.mapLayout.routes={}; log(p,'Nodo reubicado',node.dataset.node); }); }
       catch(error) { report(error); render(); }
     };
     node.addEventListener('pointerup',finish);
@@ -501,12 +590,10 @@ function setupMap() {
     const inspect = () => {
       if (mapConnecting) return;
       const id=node.dataset.node;
-      if (findCode(id)) { quoteFilter=id; tab='quotes'; render(); }
-      else {
-        const codes=current.codes.filter(c=>c.categoryId===id).map(c=>c.id);
-        const quotes=current.quotes.filter(q=>q.codeIds.some(id=>codes.includes(id)));
-        modal('Evidencia de la categoría',quotes.map(q=>`<blockquote>${e(q.text)}</blockquote><p class="muted">${e(location(current,q))}</p>`).join('') || '<p>Todavía no hay citas vinculadas a esta categoría.</p>',async()=>{},'Cerrar');
-      }
+      const code=findCode(id);
+      const codes=code ? [id] : current.codes.filter(c=>c.categoryId===id).map(c=>c.id);
+      const quotes=current.quotes.filter(q=>q.codeIds.some(id=>codes.includes(id)) && (map.scope.type!=='research' || (q.researchQuestionIds||[]).includes(map.scope.id)));
+      modal(code ? 'Evidencia del código' : 'Evidencia de la categoría',quotes.map(q=>`<blockquote>${e(q.text)}</blockquote><p class="muted">${e(location(current,q))}</p>`).join('') || '<p>Todavía no hay citas vinculadas en este alcance.</p>',async()=>{},'Cerrar');
     };
     node.addEventListener('dblclick',inspect);
     const connect = () => {
@@ -515,7 +602,7 @@ function setupMap() {
       if (!mapSource) {mapSource=id;node.classList.add('connection-source');notify(`Origen: ${findNode(id).name}. Selecciona el destino.`);return;}
       if (mapSource===id) {notify('Elige un nodo de destino diferente.',true);return;}
       const source=mapSource;mapSource=undefined;mapConnecting=false;
-      document.querySelector('[data-action=connect-map]').setAttribute('aria-pressed','false');
+      document.querySelector('[data-action=connect-map]')?.setAttribute('aria-pressed','false');
       svg.querySelectorAll('.connection-source').forEach(selected=>selected.classList.remove('connection-source'));
       relationDialog(undefined,{source,target:id});
     };
@@ -525,17 +612,21 @@ function setupMap() {
 }
 async function organizeMap() {
   if (saving || mapOrganizing) throw new Error('Espera a que termine la operación anterior.');
+  const map = activeSavedMap();
+  if (!map) throw new Error('Este mapa ya no existe.');
   const projectId=current.id, updatedAt=current.updatedAt;
   const mode=document.querySelector('#map-layout').value;
+  const nodes=mapScopeNodes(current,map.scope), nodeIds=new Set(nodes.map(n=>n.id));
+  const edges=scopedEdges(current,nodeIds);
   mapOrganizing=true;mapConnecting=false;mapSource=undefined;
-  const control=document.querySelector('[data-action=organize-map]');control.disabled=true;control.textContent='Organizando…';
+  const control=document.querySelector('[data-action=organize-map]');if(control){control.disabled=true;control.textContent='Organizando…';}
   try {
-    const result=await autoLayout(structuredClone(current),mode);
+    const result=await autoLayout(nodes,edges,mode);
     if(current?.id!==projectId || current.updatedAt!==updatedAt)throw new Error('El proyecto cambió durante la organización. Vuelve a intentarlo.');
-    await mutate(p=>{p.positions=result.positions;p.mapLayout=result.mapLayout;log(p,'Mapa organizado',mapLayouts.find(layout=>layout.id===mode).name);});
-    if(tab==='map')actions['fit-map']();
+    await mutateSavedMap((p,m)=>{m.positions=result.positions;m.mapLayout=result.mapLayout;log(p,'Mapa organizado',mapLayouts.find(layout=>layout.id===mode).name);});
+    actions['fit-map']();
     notify('Organización guardada. Códigos, relaciones y citas conservados.');
-  } finally {mapOrganizing=false;if(current && tab==='map'){const next=document.querySelector('[data-action=organize-map]');if(next){next.disabled=false;next.textContent='Organizar mapa';}}}
+  } finally {mapOrganizing=false;if(current){const next=document.querySelector('[data-action=organize-map]');if(next){next.disabled=false;next.textContent='Organizar mapa';}}if(syncPending)refreshSyncedProject();}
 }
 async function saveRelation(form, id) {
   if(form.get('source')===form.get('target')) throw new Error('Elige dos nodos diferentes.');
@@ -793,8 +884,22 @@ const actions = {
   'export-quotes':()=>download(`${fileName(current.name)}-matriz.csv`,csv([['Proyecto','Categoría → código','ID código','ID cita','Cita literal','Origen','Memo','Preguntas / objetivos'],...exportRows()]),'text/csv;charset=utf-8'),
   'export-report':exportReport,
   'new-relation':()=>relationDialog(), 'edit-relation':relationDialog,
+  'new-map':()=>newMapDialog(),
+  'open-map':id=>openMapWindow(id),
+  'delete-map':id=>modal('Eliminar mapa','<p>Se eliminará este mapa guardado y su disposición de nodos. Las categorías, códigos y relaciones del proyecto permanecerán intactos.</p>',async()=>{await mutate(p=>{p.savedMaps=p.savedMaps.filter(m=>m.id!==id);log(p,'Mapa eliminado',id);});},'Eliminar mapa'),
+  'save-map-window':()=>{
+    const map=activeSavedMap();
+    if(!map)return;
+    modal('Guardar mapa',`<label>Nombre del mapa<input name="name" value="${e(map.name)}" maxlength="120" required></label>`,async form=>{
+      const name=form.get('name').trim();
+      if(!name)throw new Error('Escribe un nombre para el mapa.');
+      await mutateSavedMap((p,m)=>{m.name=name;log(p,'Mapa renombrado',name);});
+      notify('Mapa guardado.');
+    },'Guardar');
+  },
+  'close-map-window':()=>window.close(),
   'organize-map':organizeMap,
-  'connect-map':()=>{mapConnecting=!mapConnecting;mapSource=undefined;document.querySelector('[data-action=connect-map]').setAttribute('aria-pressed',String(mapConnecting));document.querySelectorAll('.connection-source').forEach(node=>node.classList.remove('connection-source'));if(mapConnecting)notify('Selecciona el nodo de origen y luego el de destino.');},
+  'connect-map':()=>{mapConnecting=!mapConnecting;mapSource=undefined;document.querySelector('[data-action=connect-map]')?.setAttribute('aria-pressed',String(mapConnecting));document.querySelectorAll('.connection-source').forEach(node=>node.classList.remove('connection-source'));if(mapConnecting)notify('Selecciona el nodo de origen y luego el de destino.');},
   'delete-relation':id=>modal('Eliminar relación','<p>Se eliminará solo esta relación interpretativa. Sus códigos y citas permanecerán.</p>',async()=>{await mutate(p=>{p.relations=p.relations.filter(r=>r.id!==id);log(p,'Relación eliminada',id);});},'Eliminar relación'),
   'export-map':exportMap,
   'export-map-png':exportMapPNG,
@@ -819,12 +924,14 @@ document.addEventListener('click',async event=>{
   } catch(error) {report(error);}
 });
 document.addEventListener('change',event=>{
+  if(event.target.closest('form') && !event.target.closest('dialog')) dirtyForm=true;
   if(event.target.id==='project-select') {current=projects.find(p=>p.id===event.target.value);resetView();render();}
   if(event.target.id==='quote-filter') {quoteFilter=event.target.value;render();}
   if(event.target.id==='category-filter') {categoryFilter=event.target.value;render();}
   if(event.target.id==='research-filter') {researchFilter=event.target.value;render();}
 });
 document.addEventListener('input',event=>{
+  if(event.target.closest('form') && !event.target.closest('dialog')) dirtyForm=true;
   if(event.target.id==='document-search') {documentSearch=event.target.value;refreshSearch('document-search');}
   if(event.target.id==='quote-search') {quoteSearch=event.target.value;refreshSearch('quote-search');}
 });
@@ -858,4 +965,40 @@ async function start() {
     report(error);
   }
 }
-start();
+async function startMapWindow() {
+  try {
+    await openDB();
+    const found = (await listProjects()).find(p => p.id === popupProjectId);
+    if (!found) throw new Error('No se encontró el proyecto de este mapa.');
+    current = validateProject(found);
+    render();
+  } catch (error) {
+    app.innerHTML = `<main class="welcome"><h1>No se pudo abrir este mapa</h1><p>${e(error.message)}</p><button type="button" data-action="close-map-window">Cerrar ventana</button></main>`;
+  }
+}
+async function refreshSyncedProject() {
+  if (!syncPending || saving || dialog.open || mapOrganizing) return;
+  syncPending = false;
+  const id = popupMapId ? popupProjectId : current?.id;
+  try {
+    const refreshed = (await listProjects()).map(validateProject);
+    if (!popupMapId) projects = refreshed;
+    const updated = refreshed.find(p => p.id === id);
+    if (!updated || updated.updatedAt === current?.updatedAt) return;
+    current = validateProject(updated);
+    undoSnapshot = undefined;
+    undoProjectId = undefined;
+    undoAction = '';
+    if (!dirtyForm) render();
+  } catch (error) { report(error); }
+}
+dialog.addEventListener('close', refreshSyncedProject);
+syncChannel?.addEventListener('message', event => {
+  const id = popupMapId ? popupProjectId : current?.id;
+  if (!current || !event.data?.projectId) return;
+  if (popupMapId && event.data.projectId !== id) return;
+  if (event.data.projectId === id && event.data.updatedAt === current.updatedAt) return;
+  syncPending = true;
+  refreshSyncedProject();
+});
+if (popupMapId) startMapWindow(); else start();

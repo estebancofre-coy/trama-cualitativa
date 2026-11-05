@@ -3,6 +3,17 @@ import JSZip from 'jszip';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 
+async function createMapWindow(page, name = 'Mapa de articulación') {
+  await page.getByRole('button',{name:'+ Crear mapa',exact:true}).first().click();
+  await page.getByLabel('Nombre del mapa',{exact:true}).fill(name);
+  await page.locator('select[name=categoryId]').selectOption({label:'Articulación institucional'});
+  const pending=page.waitForEvent('popup');
+  await page.getByRole('button',{name:'Crear y abrir',exact:true}).click();
+  const popup=await pending;
+  await expect(popup.locator('#relation-map')).toBeVisible();
+  return popup;
+}
+
 test('manual workflow, traceability, focused prompt, map, backup and persistence',async({page})=>{
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
@@ -38,9 +49,9 @@ test('manual workflow, traceability, focused prompt, map, backup and persistence
   await expect(page.locator('#prompt-output')).toContainText('Cuando cambia el equipo');
   await expect(page.locator('#prompt-output')).not.toContainText('Cuando conocemos a alguien');
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
-  await expect(page.locator('#relation-map')).toBeVisible();
-  await expect(page.locator('.map-edge')).toHaveCount(4);
-  await page.getByRole('button',{name:'Ajustar a pantalla'}).click();
+  const map=await createMapWindow(page);
+  await expect(map.locator('.map-edge')).toHaveCount(4);
+  await map.getByRole('button',{name:'Ajustar a pantalla'}).click();
   if(process.env.TRAMA_SCREENSHOTS) await page.screenshot({path:join(process.env.TRAMA_SCREENSHOTS,'trama-desktop.png'),fullPage:true});
   const downloadPromise=page.waitForEvent('download');
   await page.getByRole('button',{name:'↓ Descargar respaldo'}).click();
@@ -101,6 +112,7 @@ test('custom relation labels can connect a category and code and be edited',asyn
   await page.goto('/');
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
+  page=await createMapWindow(page);
   await page.getByText('Construcción con desplegables',{exact:true}).click();
   await page.getByRole('button',{name:'+ Relación'}).click();
   await page.getByRole('combobox',{name:'Desde'}).selectOption({label:'Categoría: Articulación institucional'});
@@ -174,11 +186,11 @@ test('concurrent tabs cannot silently overwrite a project',async({page,context})
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
   const second=await context.newPage();
   await second.goto('/');
+  await second.getByRole('button',{name:'Ajustes',exact:true}).click();
+  await second.getByLabel('Nombre del proyecto').fill('Nombre obsoleto');
   await page.getByRole('button',{name:'Ajustes',exact:true}).click();
   await page.getByLabel('Nombre del proyecto').fill('Nombre guardado en la primera pestaña');
   await page.getByRole('button',{name:'Guardar ajustes'}).click();
-  await second.getByRole('button',{name:'Ajustes',exact:true}).click();
-  await second.getByLabel('Nombre del proyecto').fill('Nombre obsoleto');
   await second.getByRole('button',{name:'Guardar ajustes'}).click();
   await expect(second.locator('.form-error')).toContainText('otra pestaña');
   await second.reload();
@@ -189,6 +201,7 @@ test('relationship creation, evidence retrieval and node positions persist',asyn
   await page.goto('/');
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
+  page=await createMapWindow(page);
   await page.getByText('Construcción con desplegables',{exact:true}).click();
   await page.getByRole('button',{name:'+ Relación'}).click();
   const source=page.getByRole('combobox',{name:'Desde',exact:true});
@@ -208,17 +221,19 @@ test('relationship creation, evidence retrieval and node positions persist',asyn
   await expect(page.locator('#save-state')).toHaveText('Guardado en este navegador');
   const moved=await page.locator('.map-node').first().getAttribute('transform');
   await page.reload();
-  await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
   await expect(page.locator('.map-node').first()).toHaveAttribute('transform',moved);
   await page.locator('.map-node').nth(1).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading',{name:'Citas e insertos'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Evidencia del código'})).toBeVisible();
+  await expect(page.locator('#dialog blockquote')).toContainText('Cuando conocemos a alguien');
 });
 test('map connects nodes, edits labels, persists automatic layouts and exports complete SVG',async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
+  page=await createMapWindow(page);
+  page.on('pageerror',error=>errors.push(error.message));
   await page.getByRole('button',{name:'Conectar nodos'}).click();
   await expect(page.getByRole('button',{name:'Conectar nodos'})).toHaveAttribute('aria-pressed','true');
   await page.locator('.map-node').first().click();
@@ -253,7 +268,6 @@ test('map connects nodes, edits labels, persists automatic layouts and exports c
   const positions=await page.locator('.map-node').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('transform')));
   const routes=await page.locator('.edge-path').evaluateAll(paths=>paths.map(path=>path.getAttribute('d')));
   await page.reload();
-  await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
   await expect(page.getByRole('combobox',{name:'Organización',exact:true})).toHaveValue('orthogonal');
   expect(await page.locator('.map-node').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('transform')))).toEqual(positions);
   expect(await page.locator('.edge-path').evaluateAll(paths=>paths.map(path=>path.getAttribute('d')))).toEqual(routes);
@@ -285,13 +299,14 @@ test('map connects nodes, edits labels, persists automatic layouts and exports c
   await expect(page.getByRole('combobox',{name:'Conexiones',exact:true})).toHaveValue('straight');
   await expect(page.locator('#save-state')).toHaveText('Guardado en este navegador');
   await page.reload();
-  await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
   await expect(page.getByRole('combobox',{name:'Conexiones',exact:true})).toHaveValue('straight');
   expect(errors).toEqual([]);
 });
 test('branding keeps logo, dark surfaces and semantic labels readable across desktop views',async({page})=>{
   await page.goto('/');
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
+  await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
+  const map=await createMapWindow(page);
   await page.evaluate(()=>document.fonts.ready);
   const audit=async()=>page.evaluate(()=>{
     const luminance=color=>{
@@ -325,8 +340,9 @@ test('branding keeps logo, dark surfaces and semantic labels readable across des
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),`${tab}: desbordamiento horizontal`).toBeTruthy();
       for(const result of await audit())expect(result.ratio,`${tab}: ${result.text}`).toBeGreaterThanOrEqual(4.5);
       if(tab==='map'){
-        await page.getByRole('button',{name:'Ajustar a pantalla'}).click();
-        const colors=await page.locator('.map-node[data-kind=category]').first().evaluate(node=>({background:node.querySelector('rect').getAttribute('fill'),text:getComputedStyle(node.querySelector('.node-name')).fill,metadata:getComputedStyle(node.querySelector('.node-kind')).fill}));
+        await map.setViewportSize({width,height:900});
+        await map.getByRole('button',{name:'Ajustar a pantalla'}).click();
+        const colors=await map.locator('.map-node[data-kind=category]').first().evaluate(node=>({background:node.querySelector('rect').getAttribute('fill'),text:getComputedStyle(node.querySelector('.node-name')).fill,metadata:getComputedStyle(node.querySelector('.node-kind')).fill}));
         expect(colors.background).toBe('#16302b');
         expect(colors.text).toBe('rgb(244, 248, 245)');
         expect(colors.metadata).toBe('rgb(199, 231, 217)');
@@ -340,6 +356,8 @@ test('quick relation builder remains optional and exports the full map as nonbla
   await page.goto('/');
   await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
   await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
+  page=await createMapWindow(page);
+  page.on('pageerror',error=>errors.push(error.message));
   await expect(page.locator('.map-quick')).toHaveAttribute('open','');
   await expect(page.locator('.map-classic')).not.toHaveAttribute('open','');
   const form=page.locator('#quick-relation-form');
@@ -402,7 +420,6 @@ test('quick relation builder remains optional and exports the full map as nonbla
   expect(pixels.ink).toBeGreaterThan(1000);
   expect(pixels.corner).toEqual([255,255,255,255]);
   await page.reload();
-  await page.getByRole('button',{name:'Mapa de relaciones',exact:false}).first().click();
   await expect(page.locator('.relationship-list')).toContainText('facilita la continuidad');
   expect(errors).toEqual([]);
 });
