@@ -1,6 +1,7 @@
 import { build } from 'vite';
 import { readFile, writeFile, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import JSZip from 'jszip';
 
 await build({
   configFile: false,
@@ -33,4 +34,10 @@ await copyFile('apps-script/Code.gs', join(dir, 'Code.gs'));
 await copyFile('apps-script/appsscript.json', join(dir, 'appsscript.json'));
 await copyFile('docs/INSTALAR-GOOGLE.md', join(dir, 'INSTALAR-GOOGLE.md'));
 if (/<script[^>]+src=|<link[^>]+rel="stylesheet"/i.test(html)) throw new Error('El paquete Google contiene recursos externos sin integrar.');
-console.log('Instalador privado listo en dist-apps-script: Code.gs, Domain.gs, Index.html y appsscript.json.');
+const zip = new JSZip();
+for (const name of ['Code.gs', 'Domain.gs', 'Index.html', 'appsscript.json', 'INSTALAR-GOOGLE.md']) {
+  zip.file(name, await readFile(join(dir, name)));
+}
+const archive = join(dir, 'TRAMA-QDA-instalacion-Google.zip');
+await writeFile(archive, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+console.log(`Paquete privado listo: ${archive}. Incluye los cuatro archivos de Apps Script y la guia de instalacion.`);

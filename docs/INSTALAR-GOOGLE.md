@@ -8,7 +8,7 @@ Esta versión usa **Apps Script como interfaz y backend**, Drive como almacenami
 
 Usa el ZIP de instalación preparado con estos archivos:
 
-También se genera el artefacto **trama-google-instalador** en cada ejecución exitosa del workflow **Publicar TRAMA-QDA** de GitHub Actions. Descárgalo desde la ejecución del código que deseas instalar.
+El mismo ZIP sirve para ambas instalaciones: no incluye cuentas, contraseñas, tokens ni datos de investigación. Descomprímelo antes de copiar los archivos al editor.
 
 | Archivo del paquete | Archivo en el editor de Apps Script |
 |---|---|
@@ -24,7 +24,17 @@ npm ci
 npm run build:google
 ```
 
-Los cuatro archivos se generan en `dist-apps-script`. `Index.html` es el archivo grande: incluye interfaz, estilos y lector DOCX; no debes sustituirlo por el `index.html` del código fuente.
+El ZIP se genera en `dist-apps-script/TRAMA-QDA-instalacion-Google.zip`, junto a los archivos individuales. Solo necesitas compartir este ZIP; los estudiantes no necesitan instalar Node.js ni compilar la aplicación. `Index.html` es el archivo grande: incluye interfaz, estilos y lector DOCX; no debes sustituirlo por el `index.html` del código fuente.
+
+### Instalación acompañada para dos estudiantes
+
+Repite los pasos 2 a 5 por separado para cada estudiante. Cada persona debe crear el proyecto en su propia cuenta institucional: tendrá su script, carpeta de Drive, hoja de índices y URL `/exec` independientes.
+
+Puedes guiar la instalación por pantalla compartida o ayudar a copiar el código en el equipo del estudiante, con su autorización. La persona titular debe iniciar sesión, revisar y aceptar los permisos, ejecutar `setupTrama` y desplegar como su propia cuenta. No ejecutes `setupTrama` desde tu cuenta en el script del estudiante: la instalación se vincularía a la cuenta equivocada. No solicites sus contraseñas ni guardes sus sesiones.
+
+El paquete no requiere compartir el script contigo. Si necesitan que mantengas el código como editor, ese acceso debe autorizarse expresamente y ajustarse a las políticas institucionales: un editor puede modificar código que se ejecuta con permisos del titular. El acceso de mantenimiento no equivale a acceso de uso; el despliegue **Solo yo** seguirá siendo exclusivo del estudiante. No compartan la carpeta ni las entrevistas para instalar o actualizar la aplicación.
+
+Antes de comenzar, comprueba el correo activo en el perfil del navegador. Al finalizar, cada estudiante debe guardar su propia URL `/exec` como favorito o acceso directo de escritorio. La aplicación se usa en el navegador y necesita conexión para guardar en Drive; no es una aplicación de escritorio instalada ni funciona sin conexión.
 
 ## 2. Crear el proyecto privado
 
@@ -70,6 +80,7 @@ Además de la restricción del despliegue, cada operación comprueba la cuenta a
 4. En **Drive, índices y versiones**, abre la carpeta y verifica que hay archivos JSON de versión.
 5. Pulsa **Actualizar índices de Sheets** y revisa los códigos y referencias en la hoja.
 6. Descarga un respaldo JSON, restáuralo y comprueba que aparece como copia independiente.
+7. En **Mapa de relaciones**, crea un mapa por categoría y abre su ventana. Permite ventanas emergentes para la URL privada si el navegador las bloquea. Mueve un nodo, cierra y vuelve a abrir el mapa para comprobar su persistencia.
 
 Solo después importa entrevistas reales. El código puede probarse con dobles de los servicios Google, pero permisos, cuotas y acceso efectivo deben verificarse en esta instalación real.
 
@@ -110,7 +121,7 @@ La restauración conserva texto y trazabilidad, pero los respaldos antiguos no c
 
 ## Actualizar el código
 
-Antes de cambiar código, descarga los respaldos. Reemplaza los cuatro archivos del paquete, conserva las propiedades y ejecuta `setupTrama` solo si la actualización lo requiere. Después usa **Implementar → Gestionar implementaciones → Editar → Nueva versión**. Mantén acceso **Solo yo** y el mismo despliegue; cambiar de URL puede separar el almacenamiento de recuperación local.
+Antes de cambiar código, descarga los respaldos. Reemplaza los cuatro archivos del paquete, conserva las propiedades y ejecuta `setupTrama` solo si la actualización lo requiere. Después, la persona titular debe usar **Implementar → Gestionar implementaciones → Editar → Nueva versión** desde su cuenta. Mantén acceso **Solo yo** y el mismo despliegue; cambiar de URL puede separar el almacenamiento de recuperación local. Repite la comprobación con datos ficticios antes de retomar el trabajo real.
 
 ## Referencias oficiales
 
