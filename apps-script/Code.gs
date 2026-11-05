@@ -21,13 +21,13 @@ function setupTrama() {
     let folderId = props.getProperty('TRAMA_FOLDER');
     let spreadsheetId = props.getProperty('TRAMA_SHEET');
     if (!folderId) {
-      const folder = DriveApp.createFolder('Trama cualitativa · privado');
+      const folder = DriveApp.createFolder('TRAMA-QDA · privado');
       folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
       folderId = folder.getId();
       props.setProperty('TRAMA_FOLDER', folderId);
     }
     if (!spreadsheetId) {
-      const book = SpreadsheetApp.create('Trama cualitativa · índices');
+      const book = SpreadsheetApp.create('TRAMA-QDA · índices');
       const file = DriveApp.getFileById(book.getId());
       file.moveTo(DriveApp.getFolderById(folderId));
       file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
@@ -67,7 +67,7 @@ function withLock_(fn) {
 
 function doGet() {
   authorize_();
-  return HtmlService.createHtmlOutputFromFile('Index').setTitle('Trama cualitativa · privado');
+  return HtmlService.createHtmlOutputFromFile('Index').setTitle('TRAMA-QDA · privado');
 }
 
 function book_() {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
+import { project, demoProject, validateProject, addQuote, paragraphs, location, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, decideExternalResult, verifyExternalProposal, csv, escapeHTML, updateResearchBank } from '../src/domain.js';
+import { autoLayout, mapLayouts, mapEdges, edgeGeometry } from '../src/map-layout.js';
 
 function config(p, overrides = {}) {
   return { question:'¿Cómo coordinan?',mode:'Inductiva',operation:'Codificar',scope:'quotes',budget:5,codeIds:p.codes.map(c=>c.id),quoteIds:[p.quotes[0].id],documentIds:[], ...overrides };
@@ -82,6 +83,13 @@ test('backup validation rejects broken spans, missing links, duplicate IDs and c
     const p=demoProject();change(p);assert.throws(()=>validateProject(p));
   }
 });
+test('project backups accept bounded custom relationship labels',()=>{
+  const p=demoProject();
+  p.relations[0].type='favorece bajo ciertas condiciones';
+  assert.equal(validateProject(p),p);
+  p.relations[0].type='x'.repeat(121);
+  assert.throws(()=>validateProject(p));
+});
 test('CSV export prevents formula execution and HTML escapes untrusted content',()=>{
   const output=csv([['=HYPERLINK("x")',' +SUM(A1)','Normal;con separador','línea\nnueva']]);
   assert.ok(output.startsWith('\uFEFF'));
@@ -123,4 +131,123 @@ test('legacy backups without research bank still validate and can be extended',(
   validateProject(p);
   updateResearchBank(p,'Pregunta nueva','');
   validateProject(p);
+});
+function externalFixture(overrides = {}) {
+  const p = demoProject();
+  const settings = config(p,{requestId:'request-1',externalMaterial:true,documentIds:[p.documents[0].id],...overrides});
+  const record = {id:settings.requestId,createdAt:new Date().toISOString(),question:settings.question,mode:settings.mode,operation:settings.operation,scope:settings.scope,text:promptText(p,settings),manifest:promptManifest(p,settings)};
+  p.prompts.push(record);
+  const proposal = {id:'proposal-1',documentId:p.quotes[0].documentId,text:p.quotes[0].text,code:{existingId:p.codes[0].id},researchQuestionIds:[],memo:'Fundamento externo'};
+  const encode = proposals => JSON.stringify({schemaVersion:1,projectId:p.id,promptId:record.id,proposals});
+  return {p,record,proposal,encode};
+}
+test('external prompts export JSON TXT and Markdown without corpus in every scope',()=>{
+  const {p,record} = externalFixture();
+  for (const scope of ['quotes','documents','selection']) {
+    const settings = config(p,{requestId:record.id,externalMaterial:true,scope,documentIds:[p.documents[0].id],selection:{documentId:p.quotes[0].documentId,start:p.quotes[0].start,end:p.quotes[0].end}});
+    record.text = promptText(p,settings);
+    for (const format of ['json','txt','md']) {
+      const output = exportPrompt(record,format);
+      for (const quote of p.quotes) assert.ok(!output.includes(quote.text));
+      assert.ok(output.includes(p.documents[0].id));
+    }
+    assert.equal(JSON.parse(exportPrompt(record,'json')).promptId,record.id);
+    assert.match(record.text,/exclusivamente JSON válido/);
+    assert.ok(!record.text.includes('B. Tabla:'));
+  }
+  assert.throws(()=>exportPrompt(record,'html'));
+});
+test('JSON results stay pending, accept or reject individually, and survive backups',()=>{
+  const {p,proposal,encode} = externalFixture();
+  const batch = stageExternalResults(p,encode([proposal,{...proposal,id:'bad',text:'Cita inventada'}]));
+  p.externalReviews = [batch];
+  assert.deepEqual(batch.items.map(item=>item.status),['pending','invalid']);
+  assert.equal(p.quotes.length,2);
+  decideExternalResult(p,batch.id,batch.items[0].id,true);
+  decideExternalResult(p,batch.id,batch.items[1].id,false);
+  assert.deepEqual(batch.items.map(item=>item.status),['accepted','rejected']);
+  assert.equal(p.quotes.length,2);
+  assert.match(p.quotes[0].memo,/Fundamento externo/);
+  validateProject(JSON.parse(JSON.stringify(p)));
+  assert.throws(()=>decideExternalResult(p,batch.id,batch.items[0].id,true),/resuelta/);
+  assert.throws(()=>stageExternalResults(p,encode([proposal])),/anteriormente/);
+});
+test('JSON contract rejects Markdown, foreign requests, malformed entries and duplicate IDs',()=>{
+  const {p,proposal,encode} = externalFixture();
+  for (const text of ['```json\n{}\n```','null',JSON.stringify({schemaVersion:1,projectId:'foreign',promptId:'request-1',proposals:[]}),encode([proposal,proposal]),encode([null])]) assert.throws(()=>stageExternalResults(p,text));
+  assert.throws(()=>stageExternalResults(p,encode([proposal]).replace('request-1','missing')),/prompt/);
+});
+test('literal verification blocks ambiguous matches and wrong offsets, codes and research scope',()=>{
+  const {p,record,proposal} = externalFixture({scope:'documents'});
+  record.manifest.ranges = [{documentId:p.documents[0].id,start:0,end:p.documents[0].text.length}];
+  for (const changed of [
+    {...proposal,documentId:'missing'},
+    {...proposal,text:p.quotes[0].text.toUpperCase()},
+    {...proposal,start:0,end:proposal.text.length},
+    {...proposal,code:{existingId:'missing'}},
+    {...proposal,researchQuestionIds:['missing']},
+  ]) assert.throws(()=>verifyExternalProposal(p,record,changed));
+  proposal.text = 'equipo';
+  assert.throws(()=>verifyExternalProposal(p,record,proposal),/ambigua/);
+  proposal.start = p.documents[0].text.indexOf(proposal.text); proposal.end = proposal.start + proposal.text.length;
+  assert.equal(verifyExternalProposal(p,record,proposal).start,proposal.start);
+});
+test('new codes respect deductive restrictions and global budget across imports',()=>{
+  const {p,record,proposal,encode} = externalFixture({budget:1});
+  const newCode = {name:'Apoyo informal',description:'Apoyo entre personas',inclusion:'Contacto personal',exclusion:'Convenios'};
+  proposal.code = newCode;
+  const batch = stageExternalResults(p,encode([proposal,{...proposal,id:'proposal-2',code:{...newCode,name:'Otro código'}}]));
+  p.externalReviews = [batch];
+  decideExternalResult(p,batch.id,batch.items[0].id,true);
+  assert.equal(p.codes.length,3);
+  assert.throws(()=>decideExternalResult(p,batch.id,batch.items[1].id,true),/máximo global/);
+  assert.throws(()=>verifyExternalProposal(p,record,{...proposal,code:{...newCode,name:p.codes[0].name}}),/conflicto/);
+  const another = stageExternalResults(p,encode([{...proposal,id:'proposal-3'}]));
+  p.externalReviews.push(another);
+  decideExternalResult(p,another.id,another.items[0].id,true);
+  assert.equal(p.codes.length,3);
+  record.manifest.mode = 'Deductiva';
+  assert.throws(()=>verifyExternalProposal(p,record,proposal),/no autoriza/);
+  validateProject(p);
+});
+test('automatic layouts preserve all nodes, relations and evidence with non-overlapping positions',async()=>{
+  const p=demoProject();
+  const original=structuredClone({codes:p.codes,categories:p.categories,quotes:p.quotes,relations:p.relations});
+  for (const preset of mapLayouts) {
+    const result=await autoLayout(p,preset.id);
+    Object.assign(p,result);
+    validateProject(JSON.parse(JSON.stringify(p)));
+    assert.deepEqual({codes:p.codes,categories:p.categories,quotes:p.quotes,relations:p.relations},original);
+    const positions=Object.values(result.positions);
+    assert.equal(positions.length,3);
+    for (let index=0;index<positions.length;index++) for (const other of positions.slice(index+1)) {
+      const pos=positions[index];
+      assert.ok(pos.x+280<=other.x || other.x+280<=pos.x || pos.y+100<=other.y || other.y+100<=pos.y,`${preset.name}: nodos solapados`);
+    }
+    for (const edge of mapEdges(p)) assert.ok(result.mapLayout.routes[edge.id],`Ruta ausente: ${edge.id}`);
+    if(preset.id==='orthogonal') for(const route of Object.values(result.mapLayout.routes)) for(let index=1;index<route.points.length;index++)assert.ok(route.points[index].x===route.points[index-1].x || route.points[index].y===route.points[index-1].y);
+  }
+});
+test('automatic layouts handle disconnected nodes, cycles and maps beyond legacy dimensions',async()=>{
+  const p=demoProject();
+  p.relations.push({id:'cycle',source:p.codes[1].id,target:p.codes[0].id,type:'contradice',memo:'Ciclo interpretativo',quoteIds:[]});
+  for(let index=0;index<40;index++)p.codes.push({...p.codes[0],id:`isolated-${index}`,name:`Código aislado ${index}`,categoryId:null,parentId:null});
+  Object.assign(p,await autoLayout(p,'orthogonal'));
+  validateProject(p);
+  assert.equal(Object.keys(p.positions).length,43);
+  p.positions[p.codes[0].id]={x:5000,y:3000};
+  p.mapLayout.routes={};
+  validateProject(JSON.parse(JSON.stringify(p)));
+  assert.throws(()=>validateProject({...p,mapLayout:{mode:'unknown',routing:'orthogonal',routes:{}}}));
+  assert.throws(()=>validateProject({...p,mapLayout:{mode:'orthogonal',routing:'orthogonal',routes:{bad:{points:[{x:NaN,y:0},{x:0,y:1}]}}}}));
+  await assert.rejects(()=>autoLayout(p,'unknown'));
+  await assert.rejects(()=>autoLayout(project('Vacío'),'orthogonal'));
+});
+test('edge geometry preserves routed bends and keeps orthogonal fallback labels horizontal',()=>{
+  const source={x:0,y:0},target={x:600,y:200};
+  const result=edgeGeometry(source,target,'orthogonal');
+  assert.match(result.path,/^M .* L .* L .* L /);
+  assert.ok(Number.isFinite(result.label.x) && Number.isFinite(result.label.y));
+  const route={points:[{x:1,y:2},{x:1,y:30},{x:50,y:30}],label:{x:20,y:10}};
+  assert.deepEqual(edgeGeometry(source,target,'orthogonal',route),{path:'M 1 2 L 1 30 L 50 30',label:route.label});
 });

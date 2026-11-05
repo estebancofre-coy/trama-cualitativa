@@ -1,4 +1,4 @@
-# Instalar Trama privada en Google
+# Instalar TRAMA-QDA privada en Google
 
 Esta versión usa **Apps Script como interfaz y backend**, Drive como almacenamiento principal y Sheets para índices consultables. No necesita API de IA, claves en el navegador ni un servidor contratado.
 
@@ -8,7 +8,7 @@ Esta versión usa **Apps Script como interfaz y backend**, Drive como almacenami
 
 Usa el ZIP de instalación preparado con estos archivos:
 
-También se genera el artefacto **trama-google-instalador** en cada ejecución exitosa del workflow **Publicar Trama** de GitHub Actions. Descárgalo desde la ejecución del código que deseas instalar.
+También se genera el artefacto **trama-google-instalador** en cada ejecución exitosa del workflow **Publicar TRAMA-QDA** de GitHub Actions. Descárgalo desde la ejecución del código que deseas instalar.
 
 | Archivo del paquete | Archivo en el editor de Apps Script |
 |---|---|
@@ -29,7 +29,7 @@ Los cuatro archivos se generan en `dist-apps-script`. `Index.html` es el archivo
 ## 2. Crear el proyecto privado
 
 1. En un navegador de **PC**, entra a <https://script.google.com/home/start> con la cuenta Google que usarás para investigar.
-2. Crea un **Nuevo proyecto**, llamado `Trama cualitativa privada`.
+2. Crea un **Nuevo proyecto**, llamado `TRAMA-QDA privada`.
 3. Reemplaza el contenido de `Code.gs` con el archivo del paquete.
 4. Con **+ → Secuencia de comandos**, crea `Domain` y pega `Domain.gs`.
 5. Con **+ → HTML**, crea `Index` y pega `Index.html`. No lo nombres `index` en minúsculas.
@@ -45,7 +45,7 @@ El proyecto debe contener solo estos cuatro archivos; no mezcles código del por
 3. Si una política de tu organización bloquea la app o los permisos, detente y consulta al administrador. No cambies la app a pública para sortear el bloqueo.
 4. Cuando finalice, el registro de ejecución mostrará los enlaces de la carpeta y la hoja creadas.
 
-Se crea una carpeta **Trama cualitativa · privado**, con la hoja **Trama cualitativa · índices**. Los identificadores y la cuenta propietaria se guardan en las propiedades privadas del script. Reejecutar `setupTrama` reutiliza esos recursos; no borres las propiedades para “reiniciar”.
+Se crea una carpeta **TRAMA-QDA · privado**, con la hoja **TRAMA-QDA · índices**. Los identificadores y la cuenta propietaria se guardan en las propiedades privadas del script. Reejecutar `setupTrama` reutiliza esos recursos; no borres las propiedades para “reiniciar”.
 
 Los permisos de Drive solicitados son amplios porque las operaciones usadas por Apps Script los requieren. La aplicación trabaja con la carpeta de su instalación; no lee el resto de tus documentos para el análisis. No compartas el proyecto de Apps Script, la carpeta ni la hoja.
 
