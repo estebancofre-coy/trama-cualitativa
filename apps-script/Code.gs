@@ -21,13 +21,13 @@ function setupTrama() {
     let folderId = props.getProperty('TRAMA_FOLDER');
     let spreadsheetId = props.getProperty('TRAMA_SHEET');
     if (!folderId) {
-      const folder = DriveApp.createFolder('Trama cualitativa · privado');
+      const folder = DriveApp.createFolder('TRAMA-QDA · privado');
       folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
       folderId = folder.getId();
       props.setProperty('TRAMA_FOLDER', folderId);
     }
     if (!spreadsheetId) {
-      const book = SpreadsheetApp.create('Trama cualitativa · índices');
+      const book = SpreadsheetApp.create('TRAMA-QDA · índices');
       const file = DriveApp.getFileById(book.getId());
       file.moveTo(DriveApp.getFolderById(folderId));
       file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
@@ -65,9 +65,16 @@ function withLock_(fn) {
   try { return fn(); } finally { lock.releaseLock(); }
 }
 
-function doGet() {
+function doGet(event) {
   authorize_();
-  return HtmlService.createHtmlOutputFromFile('Index').setTitle('Trama cualitativa · privado');
+  const params = event && event.parameter || {};
+  const mapId = params.mapWindow || '';
+  const projectId = params.project || '';
+  if ((mapId || projectId) && (!/^[a-zA-Z0-9_-]{1,100}$/.test(mapId) || !/^[a-zA-Z0-9_-]{1,100}$/.test(projectId))) throw new Error('El enlace del mapa no es válido.');
+  const initial = JSON.stringify({mapId:mapId,projectId:projectId,appUrl:ScriptApp.getService().getUrl()}).replace(/</g,'\\u003c');
+  const html = HtmlService.createHtmlOutputFromFile('Index').getContent()
+    .replace('<head>', '<head><script>window.__TRAMA_WINDOW__=' + initial + ';</script>');
+  return HtmlService.createHtmlOutput(html).setTitle('TRAMA-QDA · privado');
 }
 
 function book_() {

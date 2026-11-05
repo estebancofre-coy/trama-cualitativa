@@ -56,7 +56,8 @@ function harness() {
     DriveApp:{getFolderById:id=>{if(!folders.has(id))throw new Error('folder missing');return folders.get(id);},getFileById:id=>{if(!files.has(id))throw new Error('file missing');return files.get(id);}},
     LockService:{getScriptLock:()=>({tryLock:()=>{if(locked)return false;locked=true;return true;},releaseLock:()=>{locked=false;}})},
     Utilities:{newBlob:(content,mime,name)=>({content,mime,name,getBytes:()=>Buffer.from(content)}),base64Decode:text=>Buffer.from(text,'base64'),getUuid:()=>`uuid-${++sequence}`},
-    HtmlService:{createHtmlOutputFromFile:()=>({setTitle:title=>({title})})},
+    ScriptApp:{getService:()=>({getUrl:()=> 'https://script.google.com/macros/s/test/exec'})},
+    HtmlService:{createHtmlOutputFromFile:()=>({getContent:()=>'<html><head></head><body></body></html>'}),createHtmlOutput:html=>({setTitle:title=>({title,html})})},
   });
   const domain=readFileSync(new URL('../src/domain.js',import.meta.url),'utf8').replace(/^export /gm,'').replace('const uid = () => crypto.randomUUID();','const uid = () => Utilities.getUuid();');
   vm.runInContext(domain+'\n'+readFileSync(new URL('../apps-script/Code.gs',import.meta.url),'utf8'),context);
@@ -91,6 +92,15 @@ test('setup reuses private resource identifiers and refreshes index headers',()=
   assert.equal(h.files.size,0);
   h.identity.active='intruder@example.test';
   assert.throws(()=>h.context.setupTrama(),/cuenta propietaria/);
+});
+test('private popup links preserve deployment URL and validated map context',()=>{
+  const h=harness();
+  const main=h.context.doGet();
+  assert.match(main.html,/"appUrl":"https:\/\/script.google.com\/macros\/s\/test\/exec"/);
+  const popup=h.context.doGet({parameter:{mapWindow:'map-1',project:'project-1'}});
+  assert.match(popup.html,/"mapId":"map-1","projectId":"project-1"/);
+  assert.throws(()=>h.context.doGet({parameter:{mapWindow:'</script>',project:'project-1'}}),/no es válido/);
+  assert.throws(()=>h.context.doGet({parameter:{mapWindow:'map-1'}}),/no es válido/);
 });
 test('creates immutable cloud versions and detects optimistic concurrency conflicts',()=>{
   const h=harness(),p=demoProject();

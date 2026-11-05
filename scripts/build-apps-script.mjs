@@ -10,6 +10,7 @@ await build({
     outDir: 'dist-apps-script',
     emptyOutDir: true,
     cssCodeSplit: false,
+    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
     rollupOptions: { output: { inlineDynamicImports: true, entryFileNames: 'app.js', assetFileNames: '[name][extname]' } },
   },
 });
@@ -17,9 +18,11 @@ const dir = 'dist-apps-script';
 let html = await readFile(join(dir, 'index.html'), 'utf8');
 const js = await readFile(join(dir, 'app.js'), 'utf8');
 const css = await readFile(join(dir, 'style.css'), 'utf8');
+const mark = await readFile('src/assets/trama-qda-mark.svg');
 html = html.replace(/<script type="module"[^>]*src="[^"]+"[^>]*><\/script>/, () =>
   `<script>window.__TRAMA_CLOUD__ = true;</script><script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`);
 html = html.replace(/<link rel="stylesheet"[^>]*>/, () => `<style>${css}</style>`);
+html = html.replace(/(<link[^>]+rel="icon"[^>]+href=")[^"]+("[^>]*>)/, (_, prefix, suffix) => `${prefix}data:image/svg+xml;base64,${mark.toString('base64')}${suffix}`);
 html = html.replace('<head>', '<head><base target="_top">');
 await writeFile(join(dir, 'Index.html'), html);
 const domain = (await readFile('src/domain.js', 'utf8'))

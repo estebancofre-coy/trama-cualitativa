@@ -4,5 +4,6 @@ dist-apps-script/
 .clasp.json
 test-results/
 playwright-report/
+.local-checkpoints/
 .env*
 !.env.example

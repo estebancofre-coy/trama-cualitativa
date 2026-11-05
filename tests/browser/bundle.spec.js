@@ -5,6 +5,7 @@ test('Apps Script HTML bundle is self-contained and starts in private mode',asyn
   const html=readFileSync('dist-apps-script/Index.html','utf8');
   expect(html).not.toMatch(/<script[^>]+src=/i);
   expect(html).not.toMatch(/<link[^>]+rel="stylesheet"/i);
+  expect(html).toMatch(/rel="icon"[^>]+href="data:image\/svg\+xml;base64,/);
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
