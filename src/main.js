@@ -12,9 +12,12 @@ import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragra
 import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal, projectFileState, refreshProjectFileState, connectProjectFile, reconnectProjectFile } from './storage.js';
 import { autoLayout, mapLayouts, scopedEdges, mapSignature, edgeGeometry } from './map-layout.js';
 import { codebookFormats, exportCodebook } from './codebook-export.js';
+import { version as appVersion } from '../package.json';
+import { releaseNotes } from './release-notes.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
+const releaseDialog = document.querySelector('#release-dialog');
 const urlParams = new URLSearchParams(window.location.search);
 const popupMapId = window.__TRAMA_WINDOW__?.mapId || urlParams.get('mapWindow');
 const popupProjectId = window.__TRAMA_WINDOW__?.projectId || urlParams.get('project');
@@ -229,7 +232,13 @@ function tabActions() {
   return '';
 }
 function welcome() {
-  app.innerHTML = `<main class="welcome"><div class="brand dark">${brand}</div><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. ${cloudMode ? 'Instalación privada con Drive y Sheets, sin IA integrada.' : 'Sin IA integrada y sin subir tu corpus.'}</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}${installButton()}</div><p class="muted">El ejemplo contiene solo datos ficticios.</p>${offlineIndicator()}</div><div class="trace-preview"><h2>Cada idea conserva su origen</h2><ol><li><small>Categoría</small>Articulación institucional</li><li><small>Código</small>Coordinación informal</li><li><small>Cita · ejemplo ficticio</small>“Cuando conocemos a alguien del otro equipo, llamamos directamente.”</li><li><small>Origen</small>Entrevista de ejemplo · párrafo 2</li></ol></div></div><div class="privacy-strip"><strong>${cloudMode ? 'Los proyectos se guardan en tu Drive privado.' : 'Tus datos se quedan en este navegador.'}</strong><p>${cloudMode ? 'Cada guardado confirmado crea una versión completa en Drive. Sheets contiene índices regenerables. Los intentos sin confirmación se conservan en este navegador para recuperarlos. Mantén también respaldos JSON.' : 'No hay cuentas ni sincronización. Descarga respaldos: borrar los datos del navegador elimina los proyectos locales.'} Los prompts se preparan aquí; tú decides si copiarlos en un chat externo.</p>${incompatibleRecovery()}${button('restore', 'Restaurar un respaldo')}${cloudMode ? button('recovery',`Recuperación local (${pendingCount})`) : ''}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></main>`;
+  app.innerHTML = `<main class="welcome"><header class="welcome-header"><div class="brand dark">${brand}</div><div class="welcome-release"><span>Versión <b>${e(appVersion)}</b></span>${button('release-notes', 'Novedades', '', 'aria-haspopup="dialog" aria-controls="release-dialog"')}</div></header><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. ${cloudMode ? 'Instalación privada con Drive y Sheets, sin IA integrada.' : 'Sin IA integrada y sin subir tu corpus.'}</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}${installButton()}</div><p class="muted">El ejemplo contiene solo datos ficticios.</p>${offlineIndicator()}</div><div class="trace-preview"><h2>Cada idea conserva su origen</h2><ol><li><small>Categoría</small>Articulación institucional</li><li><small>Código</small>Coordinación informal</li><li><small>Cita · ejemplo ficticio</small>“Cuando conocemos a alguien del otro equipo, llamamos directamente.”</li><li><small>Origen</small>Entrevista de ejemplo · párrafo 2</li></ol></div></div><div class="privacy-strip"><strong>${cloudMode ? 'Los proyectos se guardan en tu Drive privado.' : 'Tus datos se quedan en este navegador.'}</strong><p>${cloudMode ? 'Cada guardado confirmado crea una versión completa en Drive. Sheets contiene índices regenerables. Los intentos sin confirmación se conservan en este navegador para recuperarlos. Mantén también respaldos JSON.' : 'No hay cuentas ni sincronización. Descarga respaldos: borrar los datos del navegador elimina los proyectos locales.'} Los prompts se preparan aquí; tú decides si copiarlos en un chat externo.</p>${incompatibleRecovery()}${button('restore', 'Restaurar un respaldo')}${cloudMode ? button('recovery',`Recuperación local (${pendingCount})`) : ''}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></main>`;
+}
+function showReleaseNotes() {
+  releaseDialog.querySelector('.release-history').innerHTML = releaseNotes.map(({version, changes}) =>
+    `<section class="release-entry"><h3>Versión ${e(version)}${version === appVersion ? ' <span>En uso</span>' : ''}</h3><ul>${changes.map(change => `<li>${e(change)}</li>`).join('')}</ul></section>`
+  ).join('');
+  releaseDialog.showModal();
 }
 function documentsView() {
   if (!current.documents.length) return empty('Empieza por una entrevista', 'Importa un DOCX o TXT, o pega la transcripción. Se conserva el texto importado para anclar las citas; el archivo binario original no se almacena.', button('import-document', 'Importar entrevista', 'primary') + button('paste-document', 'Pegar texto'));
@@ -907,6 +916,7 @@ async function undoLastAction() {
 }
 const actions = {
   'home':()=>{current=undefined;welcome();},
+  'release-notes':showReleaseNotes,
   'resume':()=>{current=projects[0];resetView();render();},
   'new-project':()=>projectDialog(), 'edit-project':()=>projectDialog(true),
   'demo':async()=>{const p=demoProject();const saved=await saveProject(p);projects.push(saved);current=saved;resetView();render();},

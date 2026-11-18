@@ -8,6 +8,8 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 
 **[Abrir TRAMA-QDA](https://estebancofre-coy.github.io/trama-cualitativa/)** · No requiere instalar nada ni contratar una API.
 
+En la portada, junto al nombre de TRAMA-QDA, puedes consultar la versión de la aplicación que tienes abierta y su historial en **Novedades**. No es el historial de un proyecto.
+
 La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, versiones y Sheets**, instala la variante Apps Script siguiendo [Instalar TRAMA-QDA en Google](docs/INSTALAR-GOOGLE.md). El acceso es exclusivo de la cuenta propietaria; no se conecta GitHub Pages a un endpoint público.
 
 1. Crea un proyecto o explora el ejemplo ficticio.
@@ -21,6 +23,10 @@ La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, 
 9. **Descarga un respaldo JSON o .trama** al terminar cada sesión, incluso si usas el archivo conectado.
 
 El último cambio del proyecto puede deshacerse durante la sesión actual. La bitácora conserva tanto la acción como su reversión; en Drive, deshacer crea una versión nueva y no elimina los originales ni las versiones previas.
+
+### Mantener el historial de versiones
+
+Al preparar una versión nueva, actualiza `package.json` y `package-lock.json` con `npm version <versión> --no-git-tag-version`. La portada muestra el número de `package.json`. En `src/release-notes.js`, añade al principio una entrada con el mismo número (sin prefijo `v`) y describe en español los cambios que la persona usuaria puede comprobar. Conserva las entradas anteriores y no incluyas funciones pendientes. La prueba de navegador comprueba que la versión de portada tenga su propia entrada en **Novedades**.
 
 ## Privacidad y almacenamiento
 

@@ -18,6 +18,13 @@ FORM: Familiar qualitative analysis workbench, explicitly requested ATLAS.ti-lik
     <div id="app"><p class="boot">Abriendo tu espacio de investigación…</p></div>
     <div id="notice" role="status" aria-live="polite"></div>
     <dialog id="dialog"></dialog>
+    <dialog id="release-dialog" aria-labelledby="release-title">
+      <header>
+        <h2 id="release-title">Novedades de TRAMA-QDA</h2>
+        <form method="dialog"><button type="submit" class="quiet" autofocus>Cerrar</button></form>
+      </header>
+      <div class="dialog-body release-history" tabindex="0" role="region" aria-label="Historial de versiones"></div>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -3,6 +3,37 @@ import JSZip from 'jszip';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 
+test('the welcome page shows the running version and opens accessible release notes',async({page})=>{
+  const {version} = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  await page.setViewportSize({width:1100,height:800});
+  await page.goto('/');
+  await expect(page.getByText(`Versión ${version}`,{exact:true})).toBeVisible();
+  const trigger=page.getByRole('button',{name:'Novedades',exact:true});
+  const notes=page.getByRole('dialog',{name:'Novedades de TRAMA-QDA'});
+  const close=notes.getByRole('button',{name:'Cerrar',exact:true});
+  await expect(notes).toBeHidden();
+  await page.keyboard.press('Tab');
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press('Enter');
+  const currentEntry=notes.locator('section').filter({has:page.getByRole('heading',{name:`Versión ${version} En uso`,exact:true})});
+  await expect(currentEntry.getByRole('heading')).toBeVisible();
+  await expect(currentEntry.getByRole('listitem').first()).toContainText(/\S/);
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(notes.getByRole('region',{name:'Historial de versiones'})).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(notes).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await close.click();
+  await expect(notes).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await page.getByRole('button',{name:'Explorar un ejemplo'}).click();
+  await page.getByRole('link',{name:'TRAMA-QDA, inicio'}).click();
+  await expect(trigger).toBeVisible();
+});
+
 async function createMapWindow(page, name = 'Mapa de articulación') {
   await page.getByRole('button',{name:'+ Crear mapa',exact:true}).first().click();
   await page.getByLabel('Nombre del mapa',{exact:true}).fill(name);

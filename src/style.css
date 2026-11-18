@@ -290,6 +290,17 @@ dialog footer { border-top: 1px solid var(--line); display: flex; justify-conten
 .help h3:first-child { margin-top: 0; }
 .help p { font-size: 13px; }
 .welcome { max-width: 1100px; margin: 0 auto; padding: 70px 35px; }
+.welcome-header, .welcome-release { display: flex; align-items: center; }
+.welcome-header { justify-content: space-between; gap: 20px; }
+.welcome-header .brand { margin: 0; }
+.welcome-release { gap: 12px; color: var(--muted); font-size: 13px; }
+.welcome-release b { color: var(--ink); font-family: var(--mono); font-weight: 400; }
+.release-history:focus-visible { outline-offset: -4px; }
+.release-entry + .release-entry { border-top: 1px solid var(--line); padding-top: 20px; }
+.release-entry h3 { margin: 0; }
+.release-entry h3 span { color: var(--accent); font-size: 12px; margin-inline-start: 8px; }
+.release-entry ul { padding-inline-start: 1.25em; margin: 10px 0 0; line-height: 1.6; }
+.release-entry li + li { margin-top: 8px; }
 .brand.dark { color: var(--ink); margin-left: 0; }
 .brand.dark>span { color: var(--accent); }
 .welcome-grid { display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 80px; margin-top: 70px; }
