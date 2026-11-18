@@ -16,6 +16,7 @@ await build({
 });
 const dir = 'dist-apps-script';
 let html = await readFile(join(dir, 'index.html'), 'utf8');
+html = html.replace(/<link rel="manifest"[^>]*>/, '');
 const js = await readFile(join(dir, 'app.js'), 'utf8');
 const css = await readFile(join(dir, 'style.css'), 'utf8');
 const mark = await readFile('src/assets/trama-qda-mark.svg');

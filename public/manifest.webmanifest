@@ -1,0 +1,15 @@
+{
+  "name": "TRAMA-QDA",
+  "short_name": "TRAMA-QDA",
+  "description": "Análisis cualitativo local con trazabilidad de citas y códigos.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fafaf7",
+  "theme_color": "#16302b",
+  "icons": [
+    { "src": "./icons/trama-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/trama-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

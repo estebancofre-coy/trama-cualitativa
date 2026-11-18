@@ -9,7 +9,7 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import { createElement, FileText, Tags, Quote, GitBranch, SquarePen, ClipboardCheck, History, Plus, Download, Upload, Undo2, Settings2, Pencil, Trash2, X, Check, Copy, FolderOpen, HelpCircle, Maximize2, Network, Link2, Clock, CircleAlert } from 'lucide';
 import brandMark from './assets/trama-qda-mark.svg?inline';
 import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, verifyExternalProposal, decideExternalResult, csv, demoProject, updateResearchBank, mapScopeNodes, mapScopeLabel } from './domain.js';
-import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal } from './storage.js';
+import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal, projectFileState, refreshProjectFileState, connectProjectFile, reconnectProjectFile } from './storage.js';
 import { autoLayout, mapLayouts, scopedEdges, mapSignature, edgeGeometry } from './map-layout.js';
 import { codebookFormats, exportCodebook } from './codebook-export.js';
 
@@ -122,8 +122,18 @@ async function mutate(action, { recordUndo = true } = {}) {
 }
 function updateSaveState() {
   const status=document.querySelector('#save-state');
-  if(status) status.innerHTML=`<span class="local-dot"></span> ${saving ? 'Guardando cambios…' : cloudMode && pendingCount ? 'Hay intentos pendientes · Recuperación local' : storageLabel()}`;
+  if(status) {
+    const file = projectFileState(current?.id);
+    const labels = { none:'Solo en este navegador · descarga un respaldo', saved:'Guardado en navegador y archivo', permission:'Archivo requiere permiso · cambios en navegador', pending:'Archivo pendiente · cambios en navegador', writing:'Actualizando archivo…', conflict:'Archivo modificado fuera de TRAMA-QDA', error:'Error al actualizar archivo · cambios en navegador' };
+    status.innerHTML=`<span class="local-dot"></span> ${saving ? 'Guardando cambios…' : cloudMode && pendingCount ? 'Hay intentos pendientes · Recuperación local' : cloudMode ? storageLabel() : labels[file.status]}`;
+    status.title = file.message || '';
+  }
 }
+window.addEventListener('trama-file-state', event => {
+  if (event.detail.id !== current?.id) return;
+  updateSaveState();
+  if (event.detail.status === 'error' || event.detail.status === 'conflict') notify(event.detail.message, true);
+});
 function download(name, content, type = 'text/plain;charset=utf-8') {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
@@ -161,7 +171,7 @@ function render() {
       <label class="project-switch">Proyecto<select id="project-select">${options(projects, current.id)}</select></label>
       ${button('new-project', '+ Nuevo proyecto', 'new-project')}
       <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${icon(({documents:FileText,book:Tags,quotes:Quote,map:GitBranch,prompts:SquarePen,review:ClipboardCheck,history:History})[id])}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
-      <div class="rail-bottom"><p id="save-state" role="status"><span class="local-dot"></span> ${saving ? 'Guardando cambios…' : storageLabel()}</p><p class="rail-note">${privacySummary}</p>${undoControl}${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : ''}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
+      <div class="rail-bottom"><p id="save-state" role="status"></p><p class="rail-note">${privacySummary}</p>${undoControl}${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : `<details class="file-actions"><summary>Archivo del proyecto .trama</summary>${button('connect-file','Guardar en archivo .trama','rail-backup')}${button('reconnect-file','Autorizar archivo conectado','quiet light')}${button('backup-trama','Descargar archivo .trama','quiet light')}</details>`}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
@@ -171,6 +181,7 @@ function render() {
     </main></div>`;
   if (tab === 'documents') setupSelection();
   if (tab === 'prompts') setupPrompt();
+  updateSaveState();
 }
 function tabActions() {
   if (tab === 'documents') return button('paste-document', 'Pegar entrevista') + button('import-document', '↑ Importar TXT / DOCX', 'primary');
@@ -780,7 +791,7 @@ function help() {
   modal('Guía de uso y privacidad',`<div class="help"><h3>Corpus y codificación</h3><p>Importa TXT UTF-8, DOCX o pega texto. Se conserva el texto extraído, no páginas ni formato del Word. Selecciona fragmentos en Documentos y asigna códigos desde el inspector lateral. Usa definiciones, criterios y memos para registrar decisiones.</p><h3>Evidencia y relaciones</h3><p>Las citas conservan su documento, párrafos y posiciones. Puedes consultarlas por código, categoría o pregunta, volver al origen y exportar CSV, HTML o mapas SVG. Las relaciones dirigidas requieren citas o fundamento interpretativo.</p><h3>Prompts y revisión externa</h3><p>Los nuevos prompts excluyen por defecto el texto del corpus y se exportan en JSON, TXT o Markdown. Adjunta los originales directamente en el chat externo y conserva los IDs del contrato. Importa únicamente respuestas JSON vinculadas a una solicitud de este proyecto. En Revisión externa puedes aceptar, rechazar o consultar el origen. Las citas deben coincidir literalmente y estar dentro del alcance autorizado; las citas repetidas requieren offsets exactos.</p><p>La autovalidación está desactivada por defecto en cada importación. Al activarla, se aceptan solo propuestas verificables; no se evalúa la pertinencia metodológica. Los bloqueos nunca se omiten. Categorías, jerarquías y fusiones sugeridas en memos se deciden manualmente en el libro.</p><h3>Privacidad y respaldos</h3><p>No hay llamadas a IA ni envío automático de entrevistas. Los originales que adjuntes al chat quedan sujetos a sus condiciones: anonimiza y revisa consentimientos. Los proyectos locales usan IndexedDB; borrar datos del sitio o cambiar de dispositivo puede hacerlos inaccesibles. Descarga respaldos JSON sin cifrar y consérvalos de forma segura. Restaurar crea una copia independiente y requiere nuevos prompts para nuevas importaciones externas. No hay edición colaborativa, OCR ni importación propietaria de ATLAS.ti; no estamos afiliados a ATLAS.ti.</p></div>`,async()=>{},'Entendido');
 }
 async function restore() {
-  const [file]=await chooseFiles('.json');
+  const [file]=await chooseFiles('.json,.trama,application/json');
   if(!file) return;
   if(file.size>100*1024*1024) throw new Error('El respaldo supera 100 MB. Divide el proyecto antes de importarlo.');
   let restored;
@@ -867,6 +878,9 @@ const actions = {
   'source':showSource,'edit-quote':editQuote,
   'delete-quote':id=>modal('Eliminar cita', '<p>Se eliminará esta cita y sus vínculos de respaldo en relaciones. El texto fuente y los códigos permanecerán. Esta acción no tiene deshacer.</p>',async()=>{await mutate(p=>{p.quotes=p.quotes.filter(q=>q.id!==id);p.relations.forEach(r=>{r.quoteIds=r.quoteIds.filter(q=>q!==id);});log(p,'Cita eliminada',id);});},'Eliminar cita'),
   'backup':()=>{download(`${fileName(current.name)}-${now().slice(0,10)}.json`,JSON.stringify(current,null,2),'application/json');notify('Respaldo descargado. Contiene entrevistas y citas: guárdalo de forma segura.');},
+  'backup-trama':()=>{download(`${fileName(current.name)}-${now().slice(0,10)}.trama`,JSON.stringify(current,null,2),'application/json');notify('Respaldo descargado. Contiene entrevistas y citas: guárdalo de forma segura.');},
+  'connect-file':async()=>{try {await connectProjectFile(current,`${fileName(current.name)}.trama`);} catch(error) {if(error.name !== 'AbortError') throw error;}},
+  'reconnect-file':async()=>{await reconnectProjectFile(current);},
   'restore':restore,'help':help,
   'recovery':recoveryPanel, 'cloud-panel':cloudPanel,
   'download-pending':async id=>{const item=await getPending(id);download(`${fileName(item.project.name)}-pendiente.json`,JSON.stringify(item.project,null,2),'application/json');},
@@ -941,7 +955,7 @@ document.addEventListener('click',async event=>{
 });
 document.addEventListener('change',event=>{
   if(event.target.closest('form') && !event.target.closest('dialog')) dirtyForm=true;
-  if(event.target.id==='project-select') {current=projects.find(p=>p.id===event.target.value);resetView();render();}
+  if(event.target.id==='project-select') {current=projects.find(p=>p.id===event.target.value);resetView();render();refreshProjectFileState(current).catch(report);}
   if(event.target.id==='quote-filter') {quoteFilter=event.target.value;render();}
   if(event.target.id==='category-filter') {categoryFilter=event.target.value;render();}
   if(event.target.id==='research-filter') {researchFilter=event.target.value;render();}
@@ -974,6 +988,10 @@ async function start() {
     projects=(await listProjects()).map(validateProject);
     projects.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     current=projects[0];render();
+    if (!cloudMode) {
+      await Promise.all(projects.map(project => refreshProjectFileState(project).catch(report)));
+      if (navigator.storage?.persist) navigator.storage.persist().catch(error => console.error('No se pudo solicitar almacenamiento persistente:', error));
+    }
   } catch(error) {
     app.innerHTML='<main class="welcome"><h1>No se pudo abrir el almacenamiento local</h1><p>No borres los datos del sitio. Prueba abrirlo en el navegador habitual, con almacenamiento permitido y fuera del modo incógnito.</p><button type="button" onclick="location.reload()">Reintentar</button></main>';
     if(cloudMode) {
@@ -981,6 +999,12 @@ async function start() {
     }
     report(error);
   }
+}
+if (!cloudMode && import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register(new URL('sw.js', document.baseURI)).catch(error => {
+    console.error('No se pudo preparar el uso sin conexión:', error);
+    notify('No se pudo preparar el uso sin conexión. Comprueba tu conexión y vuelve a abrir la aplicación.', true);
+  });
 }
 async function startMapWindow() {
   try {
@@ -1003,6 +1027,7 @@ async function refreshSyncedProject() {
     const updated = refreshed.find(p => p.id === id);
     if (!updated || updated.updatedAt === current?.updatedAt) return;
     current = validateProject(updated);
+    if (!cloudMode) await refreshProjectFileState(current);
     undoSnapshot = undefined;
     undoProjectId = undefined;
     undoAction = '';

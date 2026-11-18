@@ -18,13 +18,14 @@ La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, 
 6. Crea o abre mapas guardados por categoría, pregunta u objetivo en ventanas independientes. Vincula nodos, edita etiquetas, organiza cada mapa y exporta SVG o PNG.
 7. En **Prompts sin API**, elige una pregunta, modalidad y alcance explícito. Exporta el prompt en JSON, TXT o Markdown. Por defecto no contiene el texto del corpus: adjunta los documentos originales directamente a la IA externa.
 8. Importa su respuesta exclusivamente en JSON y revisa los códigos y citas en **Revisión externa** antes de aceptarlos. La autovalidación es opcional y está desactivada en cada importación.
-9. **Descarga un respaldo JSON** al terminar cada sesión.
+9. **Descarga un respaldo JSON o .trama** al terminar cada sesión, incluso si usas el archivo conectado.
 
 El último cambio del proyecto puede deshacerse durante la sesión actual. La bitácora conserva tanto la acción como su reversión; en Drive, deshacer crea una versión nueva y no elimina los originales ni las versiones previas.
 
 ## Privacidad y almacenamiento
 
 - Los proyectos se almacenan en IndexedDB, en este navegador y dirección web.
+- En la versión local puedes conectar un archivo `.trama` para actualizarlo tras cada guardado. Es un JSON completo sin cifrar, incluidas las transcripciones; el libro de códigos exportado sigue siendo un archivo distinto y no contiene entrevistas completas.
 - En la instalación privada de Apps Script, Drive es el almacenamiento principal. IndexedDB conserva intentos pendientes y una copia de la última confirmación; Sheets contiene índices regenerables a petición. Ningún fallo remoto activa silenciosamente el modo local.
 - No hay registro de usuario, servidor de entrevistas, analítica, telemetría ni llamadas a IA.
 - El hosting recibe las solicitudes normales de acceso al sitio. Las dependencias se empaquetan con la aplicación, sin CDN en tiempo de ejecución.
@@ -32,6 +33,20 @@ El último cambio del proyecto puede deshacerse durante la sesión actual. La bi
 - Los respaldos contienen texto, citas, memos, solicitudes e historial **sin cifrar**. Consérvalos de forma segura.
 - Restaurar JSON crea una copia independiente; no sobrescribe proyectos existentes.
 - Copiar a un chat externo es una acción manual. Sus condiciones y tratamientos de datos son independientes de esta app. Anonimiza, revisa consentimientos y considera la reidentificación contextual.
+
+## Uso instalable y archivos locales
+
+La versión web puede instalarse desde Chrome o Edge en PC mediante la opción de instalación del navegador. La primera visita necesita conexión: espera a que se descargue la aplicación antes de probarla sin internet. La caché incluye la interfaz, las fuentes y los módulos de lectura y mapas, no los datos de investigación. Una actualización preparada se activa cuando se cierran las ventanas que usan la versión anterior. La instalación no es necesaria para guardar proyectos.
+
+En cada proyecto, abre **Archivo del proyecto .trama** y usa **Guardar en archivo .trama** para elegir un archivo nuevo. En navegadores compatibles, la app actualiza ese archivo después de cada guardado local; el indicador muestra si quedó guardado, necesita permiso o hay un problema. **Autorizar archivo conectado** permite conceder nuevamente el permiso cuando el navegador lo solicite. Si no está disponible la escritura directa, usa **Descargar archivo .trama** o el respaldo JSON. Ambos se restauran desde **Restaurar respaldo** como proyectos independientes.
+
+La app no reemplaza un archivo existente al conectarlo y comprueba si el archivo conectado fue modificado externamente antes de escribir; si encuentra cambios, deja el archivo intacto y avisa. Evita editarlo al mismo tiempo desde otra aplicación o equipo: esa comprobación no es un bloqueo entre dispositivos. Cuando falta permiso o falla la escritura, los cambios permanecen solo en el navegador; descarga un respaldo o elige otro archivo. El navegador puede rechazar la solicitud de almacenamiento persistente, perder los permisos o eliminar sus datos. Conserva copias adicionales, por ejemplo en una carpeta sincronizada por el usuario, protegidas de acuerdo con los consentimientos de la investigación.
+
+### Empaquetar para Microsoft Store
+
+El build web (`npm run build`) genera una PWA con manifiesto, iconos y caché en `dist`. Para generar un MSIX de Store falta una cuenta de desarrollador y una identidad de aplicación en Partner Center: reserva el nombre, usa el Package ID, Publisher ID y nombre de publicador asignados y sigue la [guía de Microsoft para empaquetar una PWA](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/microsoft-store). PWABuilder necesita una URL accesible de esta versión; no envíes archivos de proyectos. Esta rama no publica una web ni genera un paquete de Store.
+
+Selecciona **Private audience** antes de publicar y añade las cuentas personales de Microsoft autorizadas; ocultar la app de las búsquedas no restringe el acceso mediante enlace. El código de la web alojada puede seguir siendo público, aunque la ficha de Store sea privada. Microsoft revisa y firma el paquete de Store. Un MSIX distribuido fuera de Store requiere una firma cuyo certificado sea confiable en cada equipo; un paquete autofirmado no se instala simplemente ignorando una advertencia. La instalación de Store tampoco cifra ni respalda los proyectos automáticamente.
 
 ## Prompts focalizados
 
@@ -115,7 +130,7 @@ Usa zoom para leer detalles y **Ajustar a pantalla** para encuadrar el conjunto.
 |---|---|
 | DOCX | Extracción local de texto con Mammoth. No conserva páginas, formato, imágenes ni tablas como estructura. |
 | TXT UTF-8 / pegado | Texto con párrafos y posiciones estables. |
-| JSON | Respaldo completo validado y restauración en esta versión de TRAMA-QDA. |
+| JSON / `.trama` | Respaldo completo validado y restauración en esta versión de TRAMA-QDA. |
 | JSON de resultados | Propuestas externas vinculadas a una solicitud; verificación, aceptación o rechazo. No es un respaldo. |
 | JSON / TXT / MD de prompt | Instrucciones exportables, sin texto del corpus por defecto, con contrato de respuesta JSON. |
 | CSV con `;` y BOM UTF-8 | Libro de códigos o matriz categoría–código–cita–origen. Protección básica contra fórmulas de hoja de cálculo. |

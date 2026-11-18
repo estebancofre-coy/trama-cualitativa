@@ -84,6 +84,9 @@ nav small { margin-left: auto; color: #b6d2d6; }
 .rail-bottom .rail-note { font-size: 11px; color: #b3c8d2; margin-bottom: 17px; }
 .rail-backup { color: #eef6f7; border-color: #64808d; background: transparent; width: 100%; font-size: 12px; }
 .rail-backup:hover { background: #294858; }
+.file-actions { margin: 4px 0 8px; }
+.file-actions summary { color: #e0eee6; cursor: pointer; font-size: 12px; font-weight: 600; padding: 10px 0; }
+.file-actions .rail-backup { margin-top: 4px; }
 button.light { color: #d1e1e7; font-size: 12px; display: flex; width: 100%; margin-top: 4px; }
 button.light:hover { background: #294858; }
 .rail button:not(.active) { color: #e0eee6; }
