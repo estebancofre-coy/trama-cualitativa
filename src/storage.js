@@ -49,7 +49,21 @@ export async function saveProject(project, expectedUpdatedAt) {
         if (read.result?.updatedAt !== expectedUpdatedAt) {
           conflict = new Error('El proyecto cambió en otra pestaña. Recarga la página antes de continuar para no sobrescribirlo.');
           tx.abort();
-        } else store.put(project);
+        } else {
+          const previous = Date.parse(read.result.updatedAt);
+          const proposed = Date.parse(project.updatedAt);
+          if (Number.isFinite(previous) && (!Number.isFinite(proposed) || proposed <= previous)) {
+            if (previous >= 8640000000000000) {
+              conflict = new Error('La fecha de revisión del proyecto no permite guardar. Descarga un respaldo antes de continuar.');
+              tx.abort();
+              return;
+            }
+            project.updatedAt = new Date(previous + 1).toISOString();
+          } else if (project.updatedAt === read.result.updatedAt) {
+            project.updatedAt = new Date().toISOString();
+          }
+          store.put(project);
+        }
       };
     } else store.put(project);
     tx.oncomplete = resolve;

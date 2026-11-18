@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
+import { demoProject } from '../../src/domain.js';
 
 async function serveBuild(context) {
   await context.route('https://trama-local.test/**', async route => {
@@ -11,6 +12,18 @@ async function serveBuild(context) {
     try { await route.fulfill({ body: await readFile(join('dist', name)), contentType: types[extname(name)] || 'application/octet-stream' }); }
     catch { await route.abort(); }
   });
+}
+
+async function localProjects(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('trama-cualitativa');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const request = open.result.transaction('projects').objectStore('projects').getAll();
+      request.onsuccess = () => { resolve(request.result); open.result.close(); };
+      request.onerror = () => reject(request.error);
+    };
+  }));
 }
 
 test('local project file saves changes, detects external edits and can be restored', async ({ page }) => {
@@ -113,4 +126,107 @@ test('project file follows changes from another window', async ({ page, context 
   })).toBe(true);
   await page.getByRole('button', { name:'Libro de códigos', exact:true }).click();
   await expect(page.getByText('Desde otra ventana', { exact:true })).toBeVisible();
+});
+
+test('a frozen clock cannot hide concurrent edits or an undo from the file revision', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const NativeDate = Date;
+    const fixed = NativeDate.parse('2026-01-01T12:00:00.000Z');
+    window.Date = class extends NativeDate {
+      constructor(...args) { if (args.length) super(...args); else super(fixed); }
+      static now() { return fixed; }
+    };
+  });
+  await serveBuild(context);
+  await page.goto('https://trama-local.test/');
+  await page.getByRole('button', { name:'Explorar un ejemplo' }).click();
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => (await navigator.storage.getDirectory()).getFileHandle('clock.trama', { create:true });
+  });
+  await page.getByText('Archivo del proyecto .trama', { exact:true }).click();
+  await page.getByRole('button', { name:'Guardar en archivo .trama' }).click();
+  await expect(page.locator('#save-state')).toContainText('Guardado en navegador y archivo');
+  const initial = (await localProjects(page))[0];
+
+  const other = await context.newPage();
+  await other.goto('https://trama-local.test/');
+  await other.getByRole('button', { name:'Libro de códigos', exact:true }).click();
+  await other.getByRole('button', { name:'+ Categoría', exact:true }).click();
+  await other.getByLabel('Nombre', { exact:true }).fill('Edición atrasada');
+
+  await page.getByRole('button', { name:'Libro de códigos', exact:true }).click();
+  await page.getByRole('button', { name:'+ Categoría', exact:true }).click();
+  await page.getByLabel('Nombre', { exact:true }).fill('Edición conservada');
+  await page.getByRole('button', { name:'Guardar', exact:true }).click();
+  await expect(page.locator('#dialog')).not.toBeVisible();
+  const saved = (await localProjects(page))[0];
+  expect(Date.parse(saved.updatedAt)).toBeGreaterThan(Date.parse(initial.updatedAt));
+
+  await other.getByRole('button', { name:'Guardar', exact:true }).click();
+  await expect(other.locator('.form-error')).toContainText('cambió en otra pestaña');
+  let file = await page.evaluate(async () => JSON.parse(await (await (await navigator.storage.getDirectory()).getFileHandle('clock.trama')).getFile().then(item => item.text())));
+  expect(file.categories.some(item => item.name === 'Edición conservada')).toBe(true);
+  expect(file.categories.some(item => item.name === 'Edición atrasada')).toBe(false);
+
+  await page.getByRole('button', { name:'Deshacer: Categoría creada' }).click();
+  const undone = (await localProjects(page))[0];
+  expect(Date.parse(undone.updatedAt)).toBeGreaterThan(Date.parse(saved.updatedAt));
+  file = await page.evaluate(async () => JSON.parse(await (await (await navigator.storage.getDirectory()).getFileHandle('clock.trama')).getFile().then(item => item.text())));
+  expect(file.updatedAt).toBe(undone.updatedAt);
+  expect(file.categories.some(item => item.name === 'Edición conservada')).toBe(false);
+});
+
+test('large backups can be restored after an explicit memory warning', async ({ page, context }) => {
+  await page.addInitScript(() => {
+    const originalSize = Object.getOwnPropertyDescriptor(Blob.prototype, 'size').get;
+    Object.defineProperty(File.prototype, 'size', {
+      configurable:true,
+      get() { return this.name === 'large.trama' ? 100 * 1024 * 1024 + 1 : originalSize.call(this); },
+    });
+  });
+  await serveBuild(context);
+  await page.goto('https://trama-local.test/');
+  const project = demoProject();
+  const choose = async () => {
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name:'Restaurar un respaldo' }).click();
+    await (await chooser).setFiles({ name:'large.trama', mimeType:'application/json', buffer:Buffer.from(JSON.stringify(project)) });
+  };
+  await choose();
+  await expect(page.getByRole('heading', { name:'Respaldo grande' })).toBeVisible();
+  await page.getByRole('button', { name:'Cancelar', exact:true }).click();
+  expect(await localProjects(page)).toHaveLength(0);
+
+  await choose();
+  await page.getByRole('button', { name:'Restaurar igualmente' }).click();
+  await expect(page.getByRole('heading', { name:'Mi primer análisis (restaurado)' })).toBeVisible();
+  const restored = (await localProjects(page))[0];
+  expect(restored.documents).toEqual(project.documents);
+  expect(restored.quotes).toEqual(project.quotes);
+});
+
+test('an incompatible local record does not hide valid projects and can be saved for recovery', async ({ page, context }) => {
+  await serveBuild(context);
+  await page.goto('https://trama-local.test/');
+  await page.getByRole('button', { name:'Explorar un ejemplo' }).click();
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('trama-cualitativa');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction('projects', 'readwrite');
+      tx.objectStore('projects').put({ id:'incompatible', schemaVersion:999, name:'Registro de prueba' });
+      tx.oncomplete = () => { open.result.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }));
+  await page.reload();
+  await expect(page.getByRole('heading', { name:'Mi primer análisis' })).toBeVisible();
+  await expect(page.locator('.rail-bottom')).toContainText('1 proyecto(s) incompatibles');
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name:'Descargar copia de recuperación' }).click();
+  const stream = await (await pending).createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  expect(JSON.parse(Buffer.concat(chunks).toString('utf8'))).toEqual([{ id:'incompatible', schemaVersion:999, name:'Registro de prueba' }]);
+  expect(await localProjects(page)).toHaveLength(2);
 });

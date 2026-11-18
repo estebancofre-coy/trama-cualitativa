@@ -296,6 +296,7 @@ dialog footer { border-top: 1px solid var(--line); display: flex; justify-conten
 .welcome h1 { font-size: 44px; letter-spacing: 0; line-height: 1.2; margin-bottom: 25px; }
 .welcome .lead { color: var(--muted); font-size: 16px; max-width: 48ch; margin-bottom: 30px; line-height: 1.8; }
 .welcome .actions { margin-bottom: 14px; }
+.welcome [data-offline-state] { color: var(--muted); font-size: 12px; }
 .trace-preview { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: white; border-radius: 3px; padding: 30px; }
 .trace-preview h2 { font-size: 16px; margin-bottom: 25px; }
 .trace-preview ol { padding-left: 22px; margin: 0; }

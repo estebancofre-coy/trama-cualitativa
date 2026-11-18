@@ -18,5 +18,7 @@ test('Apps Script keeps its Drive mode and does not register the local worker', 
   await expect(page.getByRole('heading', { name:project.name })).toBeVisible();
   await expect(page.locator('#save-state')).toContainText('Guardado en Drive privado');
   await expect(page.getByText('Archivo del proyecto .trama')).toHaveCount(0);
+  await expect(page.getByRole('button', { name:'Instalar aplicación' })).toHaveCount(0);
+  await expect(page.locator('[data-offline-state]')).toHaveCount(0);
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
 });

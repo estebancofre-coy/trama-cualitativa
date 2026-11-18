@@ -48,6 +48,18 @@ let syncPending = false;
 let dirtyForm = false;
 let bookFormat = 'csv';
 let exportingBook = false;
+let incompatibleProjects = [];
+const localInstall = !cloudMode && import.meta.env.PROD;
+const offlineSupported = localInstall && window.isSecureContext && 'serviceWorker' in navigator;
+const offlineLabels = {
+  preparing: 'Preparando el uso sin conexión…',
+  ready: 'Preparada para usar sin conexión.',
+  error: 'Sin conexión no disponible. Conéctate y recarga.',
+  unsupported: 'El uso sin conexión requiere un navegador compatible y una conexión segura.',
+};
+let offlineState = offlineSupported ? 'preparing' : 'unsupported';
+let installPrompt;
+let installed = window.matchMedia('(display-mode: standalone)').matches;
 const privacySummary = cloudMode ? 'Instalación privada · Drive y Sheets · Sin IA integrada.' : 'Sin IA integrada. Sin envío de entrevistas.';
 const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['quotes', 'Citas e insertos'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['review', 'Revisión externa'], ['history', 'Bitácora']];
 const findCode = id => current.codes.find(c => c.id === id);
@@ -78,6 +90,31 @@ function notify(text, error = false) {
 function report(error) {
   console.error(error);
   notify(error.message || 'No se pudo completar la operación. Inténtalo otra vez y conserva un respaldo.', true);
+}
+function validateProjects(records) {
+  if (cloudMode) return records.map(validateProject);
+  const valid = [], incompatible = [];
+  for (const record of records) {
+    try { valid.push(validateProject(record)); }
+    catch (error) { console.error('Proyecto local incompatible:', error); incompatible.push(record); }
+  }
+  incompatibleProjects = incompatible;
+  return valid;
+}
+function incompatibleRecovery(cls = '') {
+  if (!incompatibleProjects.length) return '';
+  return `<p>Hay ${incompatibleProjects.length} proyecto(s) incompatibles. Permanecen en este navegador; descarga una copia para recuperarlos.</p>${button('download-incompatible', 'Descargar copia de recuperación', cls)}`;
+}
+function installButton(cls = '') {
+  return localInstall && !installed ? button('install-app', 'Instalar aplicación', cls) : '';
+}
+function offlineIndicator() {
+  return localInstall ? `<p data-offline-state role="status">${offlineLabels[offlineState]}</p>` : '';
+}
+function setOfflineState(state) {
+  offlineState = state;
+  document.querySelectorAll('[data-offline-state]').forEach(element => { element.textContent = offlineLabels[state]; });
+  if (state === 'error') notify('No se pudo preparar el uso sin conexión. Comprueba tu conexión y recarga la aplicación.', true);
 }
 async function mutate(action, { recordUndo = true } = {}) {
   if (saving) throw new Error('Espera a que termine el guardado anterior.');
@@ -171,7 +208,7 @@ function render() {
       <label class="project-switch">Proyecto<select id="project-select">${options(projects, current.id)}</select></label>
       ${button('new-project', '+ Nuevo proyecto', 'new-project')}
       <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${icon(({documents:FileText,book:Tags,quotes:Quote,map:GitBranch,prompts:SquarePen,review:ClipboardCheck,history:History})[id])}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
-      <div class="rail-bottom"><p id="save-state" role="status"></p><p class="rail-note">${privacySummary}</p>${undoControl}${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : `<details class="file-actions"><summary>Archivo del proyecto .trama</summary>${button('connect-file','Guardar en archivo .trama','rail-backup')}${button('reconnect-file','Autorizar archivo conectado','quiet light')}${button('backup-trama','Descargar archivo .trama','quiet light')}</details>`}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
+      <div class="rail-bottom"><p id="save-state" role="status"></p>${offlineIndicator()}<p class="rail-note">${privacySummary}</p>${incompatibleRecovery('quiet light')}${undoControl}${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : `<details class="file-actions"><summary>Archivo del proyecto .trama</summary><p>No edites el mismo archivo a la vez desde otra aplicación o equipo.</p>${button('connect-file','Guardar en archivo .trama','rail-backup')}${button('reconnect-file','Autorizar archivo conectado','quiet light')}${button('backup-trama','Descargar archivo .trama','quiet light')}</details>`}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${installButton('quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
@@ -192,7 +229,7 @@ function tabActions() {
   return '';
 }
 function welcome() {
-  app.innerHTML = `<main class="welcome"><div class="brand dark">${brand}</div><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. ${cloudMode ? 'Instalación privada con Drive y Sheets, sin IA integrada.' : 'Sin IA integrada y sin subir tu corpus.'}</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}</div><p class="muted">El ejemplo contiene solo datos ficticios.</p></div><div class="trace-preview"><h2>Cada idea conserva su origen</h2><ol><li><small>Categoría</small>Articulación institucional</li><li><small>Código</small>Coordinación informal</li><li><small>Cita · ejemplo ficticio</small>“Cuando conocemos a alguien del otro equipo, llamamos directamente.”</li><li><small>Origen</small>Entrevista de ejemplo · párrafo 2</li></ol></div></div><div class="privacy-strip"><strong>${cloudMode ? 'Los proyectos se guardan en tu Drive privado.' : 'Tus datos se quedan en este navegador.'}</strong><p>${cloudMode ? 'Cada guardado confirmado crea una versión completa en Drive. Sheets contiene índices regenerables. Los intentos sin confirmación se conservan en este navegador para recuperarlos. Mantén también respaldos JSON.' : 'No hay cuentas ni sincronización. Descarga respaldos: borrar los datos del navegador elimina los proyectos locales.'} Los prompts se preparan aquí; tú decides si copiarlos en un chat externo.</p>${button('restore', 'Restaurar un respaldo')}${cloudMode ? button('recovery',`Recuperación local (${pendingCount})`) : ''}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></main>`;
+  app.innerHTML = `<main class="welcome"><div class="brand dark">${brand}</div><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. ${cloudMode ? 'Instalación privada con Drive y Sheets, sin IA integrada.' : 'Sin IA integrada y sin subir tu corpus.'}</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}${installButton()}</div><p class="muted">El ejemplo contiene solo datos ficticios.</p>${offlineIndicator()}</div><div class="trace-preview"><h2>Cada idea conserva su origen</h2><ol><li><small>Categoría</small>Articulación institucional</li><li><small>Código</small>Coordinación informal</li><li><small>Cita · ejemplo ficticio</small>“Cuando conocemos a alguien del otro equipo, llamamos directamente.”</li><li><small>Origen</small>Entrevista de ejemplo · párrafo 2</li></ol></div></div><div class="privacy-strip"><strong>${cloudMode ? 'Los proyectos se guardan en tu Drive privado.' : 'Tus datos se quedan en este navegador.'}</strong><p>${cloudMode ? 'Cada guardado confirmado crea una versión completa en Drive. Sheets contiene índices regenerables. Los intentos sin confirmación se conservan en este navegador para recuperarlos. Mantén también respaldos JSON.' : 'No hay cuentas ni sincronización. Descarga respaldos: borrar los datos del navegador elimina los proyectos locales.'} Los prompts se preparan aquí; tú decides si copiarlos en un chat externo.</p>${incompatibleRecovery()}${button('restore', 'Restaurar un respaldo')}${cloudMode ? button('recovery',`Recuperación local (${pendingCount})`) : ''}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></main>`;
 }
 function documentsView() {
   if (!current.documents.length) return empty('Empieza por una entrevista', 'Importa un DOCX o TXT, o pega la transcripción. Se conserva el texto importado para anclar las citas; el archivo binario original no se almacena.', button('import-document', 'Importar entrevista', 'primary') + button('paste-document', 'Pegar texto'));
@@ -793,7 +830,13 @@ function help() {
 async function restore() {
   const [file]=await chooseFiles('.json,.trama,application/json');
   if(!file) return;
-  if(file.size>100*1024*1024) throw new Error('El respaldo supera 100 MB. Divide el proyecto antes de importarlo.');
+  if(file.size>100*1024*1024) {
+    modal('Respaldo grande', '<p>Este archivo supera 100 MB. Restaurarlo puede tardar y requiere mucha memoria; el navegador podría cerrarse. Conserva el archivo original y los demás respaldos.</p>', async()=>restoreFile(file), 'Restaurar igualmente');
+    return;
+  }
+  await restoreFile(file);
+}
+async function restoreFile(file) {
   let restored;
   try {restored=validateProject(JSON.parse(await file.text()));}
   catch {throw new Error('El archivo no es un respaldo válido de TRAMA-QDA versión 1. No se modificaron los proyectos.');}
@@ -879,6 +922,20 @@ const actions = {
   'delete-quote':id=>modal('Eliminar cita', '<p>Se eliminará esta cita y sus vínculos de respaldo en relaciones. El texto fuente y los códigos permanecerán. Esta acción no tiene deshacer.</p>',async()=>{await mutate(p=>{p.quotes=p.quotes.filter(q=>q.id!==id);p.relations.forEach(r=>{r.quoteIds=r.quoteIds.filter(q=>q!==id);});log(p,'Cita eliminada',id);});},'Eliminar cita'),
   'backup':()=>{download(`${fileName(current.name)}-${now().slice(0,10)}.json`,JSON.stringify(current,null,2),'application/json');notify('Respaldo descargado. Contiene entrevistas y citas: guárdalo de forma segura.');},
   'backup-trama':()=>{download(`${fileName(current.name)}-${now().slice(0,10)}.trama`,JSON.stringify(current,null,2),'application/json');notify('Respaldo descargado. Contiene entrevistas y citas: guárdalo de forma segura.');},
+  'download-incompatible':()=>{download(`TRAMA-recuperacion-${now().slice(0,10)}.json`,JSON.stringify(incompatibleProjects,null,2),'application/json');notify('Copia de recuperación descargada. Puede contener entrevistas y requiere revisión antes de restaurarse.');},
+  'install-app':async()=>{
+    if (offlineState === 'preparing') throw new Error('La aplicación aún se prepara para usarla sin conexión. Espera a que termine.');
+    if (offlineState === 'error') throw new Error('No se pudo preparar el uso sin conexión. Conéctate y recarga antes de instalar.');
+    if (installPrompt) {
+      const prompt = installPrompt;
+      installPrompt = undefined;
+      await prompt.prompt();
+      const result = await prompt.userChoice;
+      if (result.outcome === 'dismissed') notify('Instalación cancelada. Puedes intentarlo de nuevo desde el menú del navegador.');
+    } else {
+      modal('Instalar TRAMA-QDA', '<p>En Chrome o Edge, abre el menú del navegador y busca <strong>Instalar aplicación</strong> o <strong>Aplicaciones → Instalar este sitio como aplicación</strong>. Si ya está instalada, ábrela desde el menú Inicio.</p><p>La instalación necesita una dirección HTTPS y conexión inicial; no descarga un instalador .exe. No sustituye los respaldos del proyecto.</p>', async()=>{}, 'Entendido');
+    }
+  },
   'connect-file':async()=>{try {await connectProjectFile(current,`${fileName(current.name)}.trama`);} catch(error) {if(error.name !== 'AbortError') throw error;}},
   'reconnect-file':async()=>{await reconnectProjectFile(current);},
   'restore':restore,'help':help,
@@ -985,9 +1042,10 @@ async function start() {
   try {
     await openDB();
     pendingCount = (await listPending()).length;
-    projects=(await listProjects()).map(validateProject);
+    projects=validateProjects(await listProjects());
     projects.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     current=projects[0];render();
+    if (incompatibleProjects.length) notify('Hay proyectos locales incompatibles. No se borraron; descarga una copia de recuperación.', true);
     if (!cloudMode) {
       await Promise.all(projects.map(project => refreshProjectFileState(project).catch(report)));
       if (navigator.storage?.persist) navigator.storage.persist().catch(error => console.error('No se pudo solicitar almacenamiento persistente:', error));
@@ -1000,10 +1058,37 @@ async function start() {
     report(error);
   }
 }
-if (!cloudMode && import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register(new URL('sw.js', document.baseURI)).catch(error => {
+if (localInstall) {
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPrompt = event;
+  });
+  window.addEventListener('appinstalled', () => {
+    installed = true;
+    installPrompt = undefined;
+    document.querySelectorAll('[data-action="install-app"]').forEach(element => element.remove());
+    notify('TRAMA-QDA se instaló. Conserva respaldos de tus proyectos.');
+  });
+}
+if (offlineSupported) {
+  navigator.serviceWorker.register(new URL('sw.js', document.baseURI)).then(registration => {
+    const watch = worker => {
+      if (!worker) return;
+      const update = () => {
+        if (worker.state === 'activated') setOfflineState('ready');
+        else if (worker.state === 'redundant' && !registration.active) setOfflineState('error');
+      };
+      worker.addEventListener('statechange', update);
+      update();
+    };
+    registration.addEventListener('updatefound', () => watch(registration.installing));
+    watch(registration.active);
+    watch(registration.installing);
+    watch(registration.waiting);
+    if (!registration.active && !registration.installing && !registration.waiting) setOfflineState('error');
+  }).catch(error => {
     console.error('No se pudo preparar el uso sin conexión:', error);
-    notify('No se pudo preparar el uso sin conexión. Comprueba tu conexión y vuelve a abrir la aplicación.', true);
+    setOfflineState('error');
   });
 }
 async function startMapWindow() {
@@ -1022,7 +1107,7 @@ async function refreshSyncedProject() {
   syncPending = false;
   const id = popupMapId ? popupProjectId : current?.id;
   try {
-    const refreshed = (await listProjects()).map(validateProject);
+    const refreshed = validateProjects(await listProjects());
     if (!popupMapId) projects = refreshed;
     const updated = refreshed.find(p => p.id === id);
     if (!updated || updated.updatedAt === current?.updatedAt) return;
