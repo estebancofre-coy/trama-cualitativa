@@ -33,6 +33,8 @@ test('local project file saves changes, detects external edits and can be restor
   });
   const initial = JSON.parse(await readProjectFile());
   expect(initial.name).toBe('Mi primer análisis');
+  await page.reload();
+  await expect(page.locator('#save-state')).toContainText('Guardado en navegador y archivo');
   await page.getByRole('button', { name:'Libro de códigos', exact:true }).click();
   await page.getByRole('button', { name:'+ Categoría', exact:true }).click();
   await page.getByLabel('Nombre', { exact:true }).fill('Prueba local');
@@ -65,8 +67,14 @@ test('local project file saves changes, detects external edits and can be restor
   await page.getByRole('button', { name:'Guardar', exact:true }).click();
   await expect(page.locator('#save-state')).toContainText('Archivo modificado fuera');
   expect(await readProjectFile()).toBe('cambio externo');
-  const pending = page.waitForEvent('download');
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => (await navigator.storage.getDirectory()).getFileHandle('project.trama');
+  });
   await page.getByText('Archivo del proyecto .trama', { exact:true }).click();
+  await page.getByRole('button', { name:'Guardar en archivo .trama' }).click();
+  await expect(page.locator('#notice')).toContainText('ya contiene datos');
+  expect(await readProjectFile()).toBe('cambio externo');
+  const pending = page.waitForEvent('download');
   await page.getByRole('button', { name:'Descargar archivo .trama' }).click();
   const backup = await pending;
   expect(backup.suggestedFilename()).toMatch(/\.trama$/);
