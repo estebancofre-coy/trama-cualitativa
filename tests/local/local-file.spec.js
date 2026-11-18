@@ -2,10 +2,8 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
-test('local project file saves changes, detects external edits and can be restored', async ({ page }) => {
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  await page.context().route('https://trama-local.test/**', async route => {
+async function serveBuild(context) {
+  await context.route('https://trama-local.test/**', async route => {
     const path = new URL(route.request().url()).pathname;
     const name = path === '/' ? 'index.html' : decodeURIComponent(path.slice(1));
     if (normalize(name).startsWith('..')) return route.abort();
@@ -13,6 +11,12 @@ test('local project file saves changes, detects external edits and can be restor
     try { await route.fulfill({ body: await readFile(join('dist', name)), contentType: types[extname(name)] || 'application/octet-stream' }); }
     catch { await route.abort(); }
   });
+}
+
+test('local project file saves changes, detects external edits and can be restored', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await serveBuild(page.context());
   await page.goto('https://trama-local.test/');
   await page.getByRole('button', { name:'Explorar un ejemplo' }).click();
   await page.evaluate(() => {
@@ -85,4 +89,28 @@ test('local project file saves changes, detects external edits and can be restor
   await (await chooser).setFiles(await backup.path());
   await expect(page.getByRole('heading', { name:'Mi primer análisis (restaurado)' })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('project file follows changes from another window', async ({ page, context }) => {
+  await serveBuild(context);
+  await page.goto('https://trama-local.test/');
+  await page.getByRole('button', { name:'Explorar un ejemplo' }).click();
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => (await navigator.storage.getDirectory()).getFileHandle('shared.trama', { create:true });
+  });
+  await page.getByText('Archivo del proyecto .trama', { exact:true }).click();
+  await page.getByRole('button', { name:'Guardar en archivo .trama' }).click();
+  await expect(page.locator('#save-state')).toContainText('Guardado en navegador y archivo');
+  const second = await context.newPage();
+  await second.goto('https://trama-local.test/');
+  await second.getByRole('button', { name:'Libro de códigos', exact:true }).click();
+  await second.getByRole('button', { name:'+ Categoría', exact:true }).click();
+  await second.getByLabel('Nombre', { exact:true }).fill('Desde otra ventana');
+  await second.getByRole('button', { name:'Guardar', exact:true }).click();
+  await expect.poll(() => page.evaluate(async () => {
+    const handle = await (await navigator.storage.getDirectory()).getFileHandle('shared.trama');
+    return JSON.parse(await (await handle.getFile()).text()).categories.some(item => item.name === 'Desde otra ventana');
+  })).toBe(true);
+  await page.getByRole('button', { name:'Libro de códigos', exact:true }).click();
+  await expect(page.getByText('Desde otra ventana', { exact:true })).toBeVisible();
 });
