@@ -249,7 +249,7 @@ test('relationship creation, evidence retrieval and node positions persist',asyn
   await page.mouse.move(box.x+50,box.y+40);
   await page.mouse.down();await page.mouse.move(box.x+100,box.y+100,{steps:5});await page.mouse.up();
   await expect(page.locator('.map-node').first()).not.toHaveAttribute('transform',before);
-  await expect(page.locator('#save-state')).toHaveText('Guardado en este navegador');
+  await expect(page.locator('#save-state')).toHaveText('Solo en este navegador · descarga un respaldo');
   const moved=await page.locator('.map-node').first().getAttribute('transform');
   await page.reload();
   await expect(page.locator('.map-node').first()).toHaveAttribute('transform',moved);
@@ -328,7 +328,7 @@ test('map connects nodes, edits labels, persists automatic layouts and exports c
   await exported.close();
   await page.getByRole('combobox',{name:'Conexiones',exact:true}).selectOption('straight');
   await expect(page.getByRole('combobox',{name:'Conexiones',exact:true})).toHaveValue('straight');
-  await expect(page.locator('#save-state')).toHaveText('Guardado en este navegador');
+  await expect(page.locator('#save-state')).toHaveText('Solo en este navegador · descarga un respaldo');
   await page.reload();
   await expect(page.getByRole('combobox',{name:'Conexiones',exact:true})).toHaveValue('straight');
   expect(errors).toEqual([]);
