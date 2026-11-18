@@ -171,6 +171,11 @@ test('a frozen clock cannot hide concurrent edits or an undo from the file revis
   await page.getByRole('button', { name:'Deshacer: Categoría creada' }).click();
   const undone = (await localProjects(page))[0];
   expect(Date.parse(undone.updatedAt)).toBeGreaterThan(Date.parse(saved.updatedAt));
+  await expect.poll(async () => page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const file = await (await root.getFileHandle('clock.trama')).getFile();
+    return JSON.parse(await file.text()).updatedAt;
+  })).toBe(undone.updatedAt);
   file = await page.evaluate(async () => JSON.parse(await (await (await navigator.storage.getDirectory()).getFileHandle('clock.trama')).getFile().then(item => item.text())));
   expect(file.updatedAt).toBe(undone.updatedAt);
   expect(file.categories.some(item => item.name === 'Edición conservada')).toBe(false);
