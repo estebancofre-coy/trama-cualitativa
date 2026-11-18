@@ -119,11 +119,14 @@ Usa zoom para leer detalles y **Ajustar a pantalla** para encuadrar el conjunto.
 | JSON de resultados | Propuestas externas vinculadas a una solicitud; verificación, aceptación o rechazo. No es un respaldo. |
 | JSON / TXT / MD de prompt | Instrucciones exportables, sin texto del corpus por defecto, con contrato de respuesta JSON. |
 | CSV con `;` y BOM UTF-8 | Libro de códigos o matriz categoría–código–cita–origen. Protección básica contra fórmulas de hoja de cálculo. |
+| Word (`.docx`) y Excel (`.xlsx`) | Libro de códigos en formatos nativos. Excel guarda los valores como texto, no como fórmulas. |
 | HTML | Insertos filtrados para abrir en Word o imprimir a PDF en el navegador. No es un archivo DOCX nativo. |
 | SVG | Mapa vectorial con etiquetas y posiciones. |
 | PNG | Imagen del mapa completo con fondo blanco, lista para presentaciones e informes. |
 
 El texto importado es inmutable para no desplazar referencias. Los localizadores son párrafos y posiciones en el texto extraído, **no páginas del documento original**. Las categorías de los subcódigos se asignan explícitamente. Los filtros actuales se aplican a las exportaciones de citas.
+
+En **Libro de códigos**, elige CSV, Word o Excel y pulsa **Exportar libro**. Los tres archivos conservan el ID, la ruta, la definición y los criterios del código, y añaden el ID, el fragmento literal y el origen de cada cita vinculada (documento, párrafo y posiciones). Cada vínculo ocupa su propia fila, incluso si una cita pertenece a varios códigos. Los códigos sin citas también aparecen, con las columnas de cita vacías. La descarga se genera en el navegador; no se adjuntan las entrevistas ni se envía el archivo a ningún servicio.
 
 ## Desarrollo local
 
@@ -361,7 +364,7 @@ Los índices se reconstruyen a petición, no en cada guardado. No contienen tran
 
 ```mermaid
 flowchart TD
-	A["Proyecto confirmado"] --> B["Exportar libro de códigos CSV"]
+	A["Proyecto confirmado"] --> B["Exportar libro de códigos: DOCX, XLSX o CSV"]
 	A --> C["Filtrar citas por categoría, código, pregunta o búsqueda"]
 	C --> D["Exportar matriz CSV o insertos HTML con origen"]
 	A --> E["Descargar respaldo JSON completo, incluida bitácora y revisión externa"]

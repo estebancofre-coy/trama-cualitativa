@@ -11,6 +11,7 @@ import brandMark from './assets/trama-qda-mark.svg?inline';
 import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, verifyExternalProposal, decideExternalResult, csv, demoProject, updateResearchBank, mapScopeNodes, mapScopeLabel } from './domain.js';
 import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal } from './storage.js';
 import { autoLayout, mapLayouts, scopedEdges, mapSignature, edgeGeometry } from './map-layout.js';
+import { codebookFormats, exportCodebook } from './codebook-export.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
@@ -45,6 +46,8 @@ let mapClassicOpen = false;
 let mapWindows = {};
 let syncPending = false;
 let dirtyForm = false;
+let bookFormat = 'csv';
+let exportingBook = false;
 const privacySummary = cloudMode ? 'Instalación privada · Drive y Sheets · Sin IA integrada.' : 'Sin IA integrada. Sin envío de entrevistas.';
 const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['quotes', 'Citas e insertos'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['review', 'Revisión externa'], ['history', 'Bitácora']];
 const findCode = id => current.codes.find(c => c.id === id);
@@ -171,7 +174,7 @@ function render() {
 }
 function tabActions() {
   if (tab === 'documents') return button('paste-document', 'Pegar entrevista') + button('import-document', '↑ Importar TXT / DOCX', 'primary');
-  if (tab === 'book') return button('export-book', '↓ Libro CSV') + button('new-category', '+ Categoría') + button('new-code', '+ Código', 'primary');
+  if (tab === 'book') return `<div class="actions" role="group" aria-label="Exportación del libro de códigos"><label><span class="sr-only">Formato del libro de códigos</span><select id="book-format">${options(codebookFormats, bookFormat)}</select></label>${button('export-book', 'Exportar libro', '', exportingBook ? 'disabled' : '')}</div>` + button('new-category', '+ Categoría') + button('new-code', '+ Código', 'primary');
   if (tab === 'quotes') return button('export-quotes', '↓ Matriz CSV') + button('export-report', '↓ Insertos HTML', 'primary');
   if (tab === 'map') return button('new-map', '+ Crear mapa', 'primary');
   if (tab === 'review' || tab === 'prompts') return button('import-results', '↑ Importar resultados JSON', 'primary');
@@ -880,7 +883,20 @@ const actions = {
     finally {control.disabled=false;}
   },
   'download-version':async id=>{const p=await cloudCall('getCloudVersion',current.id,id);validateProject(p);download(`${fileName(p.name)}-version-${p.updatedAt.slice(0,10)}.json`,JSON.stringify(p,null,2),'application/json');},
-  'export-book':()=>download(`${fileName(current.name)}-libro.csv`,csv([['ID','Ruta','Definición','Incluir','Excluir'],...current.codes.map(c=>[c.id,codePath(current,c.id),c.description,c.inclusion,c.exclusion])]),'text/csv;charset=utf-8'),
+  'export-book':async()=>{
+    const format = bookFormat;
+    const name = `${fileName(current.name)}-libro.${format}`;
+    exportingBook = true;
+    document.querySelector('[data-action=export-book]').disabled = true;
+    try {
+      const { content, type } = await exportCodebook(current, format);
+      download(name, content, type);
+    } finally {
+      exportingBook = false;
+      const control = document.querySelector('[data-action=export-book]');
+      if (control) control.disabled = false;
+    }
+  },
   'export-quotes':()=>download(`${fileName(current.name)}-matriz.csv`,csv([['Proyecto','Categoría → código','ID código','ID cita','Cita literal','Origen','Memo','Preguntas / objetivos'],...exportRows()]),'text/csv;charset=utf-8'),
   'export-report':exportReport,
   'new-relation':()=>relationDialog(), 'edit-relation':relationDialog,
@@ -929,6 +945,7 @@ document.addEventListener('change',event=>{
   if(event.target.id==='quote-filter') {quoteFilter=event.target.value;render();}
   if(event.target.id==='category-filter') {categoryFilter=event.target.value;render();}
   if(event.target.id==='research-filter') {researchFilter=event.target.value;render();}
+  if(event.target.id==='book-format') bookFormat=event.target.value;
 });
 document.addEventListener('input',event=>{
   if(event.target.closest('form') && !event.target.closest('dialog')) dirtyForm=true;
