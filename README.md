@@ -10,7 +10,7 @@ Aplicación web de análisis cualitativo **manual y sin API de IA**. Diseñada p
 
 En la portada, junto al nombre de TRAMA-QDA, puedes consultar la versión de la aplicación que tienes abierta y su historial en **Novedades**. No es el historial de un proyecto.
 
-La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, versiones y Sheets**, instala la variante Apps Script siguiendo [Instalar TRAMA-QDA en Google](docs/INSTALAR-GOOGLE.md). El acceso es exclusivo de la cuenta propietaria; no se conecta GitHub Pages a un endpoint público.
+La URL pública utiliza almacenamiento local en el navegador. No existe variante con Google Drive, Sheets ni ninguna otra nube.
 
 1. Crea un proyecto o explora el ejemplo ficticio.
 2. Importa DOCX / TXT UTF-8 o pega una entrevista.
@@ -22,7 +22,7 @@ La URL pública utiliza almacenamiento local. Para **guardado privado en Drive, 
 8. Importa su respuesta exclusivamente en JSON y revisa los códigos y citas en **Revisión externa** antes de aceptarlos. La autovalidación es opcional y está desactivada en cada importación.
 9. **Descarga un respaldo JSON o .trama** al terminar cada sesión, incluso si usas el archivo conectado.
 
-El último cambio del proyecto puede deshacerse durante la sesión actual. La bitácora conserva tanto la acción como su reversión; en Drive, deshacer crea una versión nueva y no elimina los originales ni las versiones previas.
+El último cambio del proyecto puede deshacerse durante la sesión actual. La bitácora conserva tanto la acción como su reversión.
 
 ### Mantener el historial de versiones
 
@@ -32,8 +32,7 @@ Al preparar una versión nueva, actualiza `package.json` y `package-lock.json` c
 
 - Los proyectos se almacenan en IndexedDB, en este navegador y dirección web.
 - En la versión local puedes conectar un archivo `.trama` para actualizarlo tras cada guardado. Es un JSON completo sin cifrar, incluidas las transcripciones; el libro de códigos exportado sigue siendo un archivo distinto y no contiene entrevistas completas.
-- En la instalación privada de Apps Script, Drive es el almacenamiento principal. IndexedDB conserva intentos pendientes y una copia de la última confirmación; Sheets contiene índices regenerables a petición. Ningún fallo remoto activa silenciosamente el modo local.
-- No hay registro de usuario, servidor de entrevistas, analítica, telemetría ni llamadas a IA.
+- No hay registro de usuario, servidor de entrevistas, analítica, telemetría ni llamadas a IA, ni sincronización con Google Drive, Sheets o cualquier otra nube.
 - El hosting recibe las solicitudes normales de acceso al sitio. Las dependencias se empaquetan con la aplicación, sin CDN en tiempo de ejecución.
 - No se sincronizan dispositivos. El modo privado, borrar datos del sitio o perder el equipo puede eliminar los proyectos. El navegador también puede desalojar almacenamiento bajo presión.
 - Los respaldos contienen texto, citas, memos, solicitudes e historial **sin cifrar**. Consérvalos de forma segura.
@@ -124,7 +123,7 @@ Pulsa **Organizar mapa** para aplicar y guardar posiciones, formato y rutas del 
 
 **Conexiones** permite cambiar entre rectas y ortogonales conservando las posiciones. Puedes arrastrar nodos después de organizar; al moverlos o cambiar la estructura se descartan las rutas automáticas anteriores y se recalculan conexiones locales. Vuelve a organizar para optimizar de nuevo las rutas y sus etiquetas.
 
-Usa zoom para leer detalles y **Ajustar a pantalla** para encuadrar el conjunto. La exportación **Mapa SVG** incluye toda la extensión del diagrama, no solo la parte visible, con etiquetas horizontales, fondo de etiqueta, colores, rutas y posiciones. El archivo es vectorial y puede ampliarse sin perder calidad. Los respaldos JSON y las versiones de Drive conservan la organización; los proyectos anteriores siguen siendo compatibles.
+Usa zoom para leer detalles y **Ajustar a pantalla** para encuadrar el conjunto. La exportación **Mapa SVG** incluye toda la extensión del diagrama, no solo la parte visible, con etiquetas horizontales, fondo de etiqueta, colores, rutas y posiciones. El archivo es vectorial y puede ampliarse sin perder calidad. Los respaldos JSON conservan la organización; los proyectos anteriores siguen siendo compatibles.
 
 **Mapa PNG** descarga una imagen del mismo diagrama completo sobre fondo blanco, independiente del zoom o desplazamiento del visor. Normalmente se genera a doble resolución. Para no agotar la memoria del navegador, los mapas grandes se reducen proporcionalmente hasta un máximo de 8192 píxeles por lado y 24 millones de píxeles; para ampliaciones sin pérdida conserva el SVG.
 
@@ -163,7 +162,6 @@ Los cambios de código sin commit permanecen en el directorio de trabajo. La car
 ```powershell
 npm test
 npm run build
-npm run build:google
 npx playwright install chromium
 npm run test:e2e
 ```
@@ -176,8 +174,6 @@ El workflow `.github/workflows/pages.yml` prueba, compila y publica únicamente 
 
 Primera versión individual: sin edición colaborativa, sincronización, cifrado local, deshacer global, audio, video, OCR, PDF ni importación de proyectos propietarios de ATLAS.ti. Los mapas permiten relaciones manuales y arrastre; no calculan causalidad ni hacen inferencias automáticas. Los nombres extensos se abrevian visualmente en los nodos, pero se conservan completos en el libro. Conviene conservar los originales fuera de la app y dividir proyectos muy grandes.
 
-La variante Google permite abrir el proyecto desde distintos PC con la misma cuenta y detecta conflictos de revisión, pero no combina ediciones concurrentes. Cada guardado crea un JSON inmutable en Drive; un puntero en la hoja Proyectos identifica la versión vigente. Las pestañas de índices no son una base transaccional ni el lugar para editar el análisis.
-
 No está afiliada a ATLAS.ti.
 
 ## Flujos de procesos internos
@@ -188,16 +184,12 @@ Los diagramas describen la implementación actual. Las operaciones de investigac
 
 ```mermaid
 flowchart TD
-	A["Abrir TRAMA-QDA en PC"] --> B["start: abrir IndexedDB y consultar pendientes"]
-	B --> C{"Modo de instalación"}
-	C -->|Local| D["Leer proyectos desde IndexedDB"]
-	C -->|Google privado| E["RPC: autorizar propietario y leer versiones de Drive"]
+	A["Abrir TRAMA-QDA en PC"] --> B["start: abrir IndexedDB"]
+	B --> D["Leer proyectos desde IndexedDB"]
 	D --> F["validateProject: validar y ordenar proyectos"]
-	E --> F
 	B -->|Fallo| G["Mostrar error sin borrar datos"]
-	E -->|Fallo| G
 	F -->|Validación fallida| G
-	G --> H["Reintentar; recuperación local en modo Google"]
+	G --> H["Reintentar"]
 	F --> I{"¿Hay proyectos?"}
 	I -->|No| J["Bienvenida: crear, demostrar o restaurar"]
 	I -->|Sí| K["Abrir proyecto más reciente"]
@@ -223,11 +215,8 @@ flowchart TD
 	D --> E["Normalizar saltos de línea y eliminar caracteres nulos"]
 	E --> F{"¿Texto legible?"}
 	F -->|No| G["Rechazar importación; escaneos requieren OCR externo"]
-	F -->|Sí| H{"¿Modo Google?"}
-	H -->|Sí| I["Subir original a Drive: máximo 8 MB"]
-	H -->|No| J["Conservar solo texto extraído"]
-	I --> K["Crear documento con ID, texto y referencia al original"]
-	J --> K
+	F -->|Sí| H["Conservar texto extraído"]
+	H --> K["Crear documento con ID, texto y createdAt"]
 	C --> K
 	K --> L["Registrar acción y guardar proyecto"]
 	L --> M["paragraphs: calcular párrafos y offsets estables"]
@@ -308,41 +297,18 @@ flowchart TD
 	E -->|Excepción| G["Informar error; conservar proyecto confirmado"]
 	F -->|Inválido| G
 	F -->|Válido| H["saveProject con updatedAt esperado"]
-	H --> I{"Modo de almacenamiento"}
-	I -->|Local| J["Transacción de lectura y escritura en IndexedDB"]
+	H --> J["Transacción de lectura y escritura en IndexedDB"]
 	J --> K{"¿Coincide la revisión esperada?"}
 	K -->|No| L["Abortar transacción; pedir recarga por conflicto entre pestañas"]
 	K -->|Sí| M["Escribir proyecto y esperar fin de transacción"]
-	I -->|Google| N["Guardar intento completo en pending con ID de operación"]
-	N --> O["cloudCall: RPC con límite de espera de 90 segundos"]
-	O --> P["Backend: autorizar propietario, validar payload y límite de 8 MB"]
-	P --> Q["Adquirir lock y consultar puntero de versión vigente"]
-	Q --> R{"¿Operación ya confirmada como vigente?"}
-	R -->|Sí| S["Devolver versión existente sin duplicarla"]
-	R -->|No| T{"¿Coincide la revisión esperada?"}
-	T -->|No| U["Rechazar conflicto; conservar intento local"]
-	T -->|Sí| V["Crear JSON completo e inmutable en Drive"]
-	V --> W["Actualizar puntero Proyectos en Sheets y marcar índices desactualizados"]
-	W --> S
-	S --> X["Cliente: validar respuesta, proyecto e ID de revisión"]
-	X --> Y["Transacción local: actualizar copia confirmada y eliminar pending"]
-	O -->|Fallo o timeout| U
-	P -->|Fallo| U
-	X -->|Respuesta inválida| U
-	Y -->|Fallo local| U
 	M --> Z["Actualizar estado visible y snapshot para deshacer"]
 	M -->|Fallo de transacción| G
-	N -->|Fallo antes de conservar intento| G
-	V -->|Fallo de Drive| U
-	W -->|Fallo de actualización del puntero| U
-	Y --> Z
-	Z --> AA["render, actualizar contador de pendientes y liberar estado de guardado"]
+	Z --> AA["render y liberar estado de guardado"]
 	G --> AA
 	L --> AA
-	U --> AA
 ```
 
-La creación, demostración y restauración de proyectos usan `saveProject` directamente, sin snapshot de deshacer. No existe fallback silencioso de Drive a almacenamiento local. Un error anterior a la escritura en `pending` no garantiza que haya un intento recuperable. Un timeout puede ocurrir después de que Google haya recibido la operación.
+La creación, demostración y restauración de proyectos usan `saveProject` directamente, sin snapshot de deshacer.
 
 ### 5. Mapa e índices consultables
 
@@ -369,15 +335,11 @@ flowchart TD
 	L --> M["Guardar relación y regenerar mapa"]
 	M --> B
 	D --> N["Exportar SVG o PNG completo con etiquetas y posiciones"]
-	O["Persona: solicitar actualización de índices de Sheets"] --> P["rebuildCloudIndexes: autorizar, adquirir lock y leer versiones vigentes"]
-	P --> Q["Proyectar documentos, preguntas, categorías, códigos, citas, relaciones y bitácora"]
-	Q --> R["Proteger celdas y escribir por lotes; marcar índices actualizados al completar"]
-	R --> S["Consultar índices; no editar el análisis desde Sheets"]
 ```
 
-Los índices se reconstruyen a petición, no en cada guardado. No contienen transcripciones completas y no sustituyen los JSON canónicos de Drive. Cada entrada de `savedMaps` conserva su alcance, posiciones y organización dentro del proyecto; zoom y ajuste de vista no se guardan como posiciones de nodos. `BroadcastChannel` notifica cambios entre ventanas del mismo origen; el almacenamiento sigue siendo local o Drive, según la instalación. No implica colaboración ni sincronización entre dispositivos.
+Los índices se calculan en el navegador a partir del proyecto vigente. Cada entrada de `savedMaps` conserva su alcance, posiciones y organización dentro del proyecto; zoom y ajuste de vista no se guardan como posiciones de nodos. `BroadcastChannel` notifica cambios entre ventanas del mismo origen; el almacenamiento es siempre local en IndexedDB. No implica colaboración ni sincronización entre dispositivos.
 
-### 6. Exportaciones, respaldo, versiones y recuperación
+### 6. Exportaciones, respaldo y recuperación
 
 ```mermaid
 flowchart TD
@@ -391,20 +353,10 @@ flowchart TD
 	I --> J["Guardar proyecto independiente y abrirlo"]
 	A --> K["Deshacer último cambio disponible durante la sesión"]
 	K --> L["Restaurar snapshot, conservar bitácora y registrar reversión"]
-	L --> M["Validar y guardar; en Drive crear otra versión"]
-	N["Panel Google: listar versiones del proyecto"] --> O["Comprobar pertenencia y descargar versión JSON"]
-	O --> F
-	P["Panel de recuperación: listar pending"] --> Q{"Decisión de la persona"}
-	Q -->|Descargar| R["Exportar JSON del intento pendiente"]
-	Q -->|Reintentar| S["Reenviar con el mismo ID y revisión esperada"]
-	S -->|Confirmado| T["Actualizar copia local, eliminar intento y recargar proyecto"]
-	S -->|Conflicto o fallo| P
-	Q -->|Guardar como copia| U["Nuevo ID y nombre; guardar sin reemplazar original"]
-	U -->|Confirmado| T
-	Q -->|Descartar| V["Confirmar eliminación solo del intento local; no modificar Drive"]
+	L --> M["Validar y guardar en IndexedDB"]
 ```
 
-Restaurar o recuperar como copia no reemplaza el proyecto original. Para futuras importaciones externas en una copia, genera nuevas solicitudes con el nuevo ID de proyecto. Deshacer solo revierte el último cambio disponible en la sesión; no es un historial multinivel.
+Restaurar no reemplaza el proyecto original. Deshacer solo revierte el último cambio disponible en la sesión; no es un historial multinivel.
 
 ### 7. Construcción y distribución
 
@@ -412,15 +364,7 @@ Restaurar o recuperar como copia no reemplaza el proyecto original. Para futuras
 flowchart LR
 	A["Código fuente, estilos y dependencias"] --> B["Vite: compilación web"]
 	B --> C["dist: HTML y recursos empaquetados"]
-	C --> D["GitHub Pages: variante local"]
-	A --> E["build-apps-script: integrar JS y CSS en Index.html"]
-	F["domain.js"] --> G["Generar Domain.gs y adaptar UUID para Apps Script"]
-	E --> H["Paquete privado: Index.html, Domain.gs, Code.gs y manifiesto"]
-	G --> H
-	H --> I["Persona: instalar archivos en Apps Script"]
-	I --> J["setupTrama: configurar propietario, carpeta privada y hoja de índices"]
-	J --> K["Persona: desplegar aplicación privada para su cuenta"]
-	K --> L["Interfaz con modo Google y RPC propietario"]
+	C --> D["GitHub Pages"]
 ```
 
-La publicación pública distribuye código, no entrevistas ni respaldos. La instalación privada requiere autorización y despliegue de la persona propietaria en Google.
+La publicación distribuye código, no entrevistas ni respaldos.

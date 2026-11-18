@@ -18,9 +18,9 @@ Codificar manualmente y conservar trazabilidad entre categorías, códigos, cita
 
 ## Operating Context
 
-Repositorio independiente y público, publicado en GitHub Pages con autorización. Los documentos no se publican: los proyectos permanecen en el navegador, con respaldos descargables y sin sincronización entre dispositivos.
+Repositorio independiente y público, publicado en GitHub Pages con autorización. Los documentos no se publican: los proyectos permanecen en el navegador (IndexedDB), con respaldos descargables (JSON y `.trama`) y sin sincronización entre dispositivos ni con servicios en la nube.
 
-Variante privada aprobada: interfaz y backend en Apps Script, acceso exclusivo a la cuenta propietaria, Drive para originales y versiones de proyectos, Sheets para índices consultables. Requiere autorización y despliegue por el usuario en Google. La variante pública sigue siendo local.
+Variante privada retirada: la aplicación ya no ofrece integración con Google Apps Script, Drive ni Sheets. Toda instalación es exclusivamente local en el navegador.
 
 ## Capabilities and Constraints
 

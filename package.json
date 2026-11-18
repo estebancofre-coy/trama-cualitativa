@@ -7,11 +7,10 @@
     "dev": "vite --host 127.0.0.1",
     "dev:local": "vite --host 127.0.0.1 --port 4174 --strictPort",
     "build": "vite build",
-    "build:google": "node scripts/build-apps-script.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/domain.test.js tests/cloud.test.js",
-    "test:e2e": "npm run build:google && playwright test",
-    "test:local": "npm run build && npm run build:google && node --test tests/offline.test.js && playwright test --config tests/playwright-local.config.js"
+    "test": "node --test tests/domain.test.js",
+    "test:e2e": "playwright test",
+    "test:local": "npm run build && node --test tests/offline.test.js && playwright test --config tests/playwright-local.config.js"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

@@ -9,7 +9,7 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import { createElement, FileText, Tags, Quote, GitBranch, SquarePen, ClipboardCheck, History, Plus, Download, Upload, Undo2, Settings2, Pencil, Trash2, X, Check, Copy, FolderOpen, HelpCircle, Maximize2, Network, Link2, Clock, CircleAlert } from 'lucide';
 import brandMark from './assets/trama-qda-mark.svg?inline';
 import { uid, now, colors, relationTypes, escapeHTML as e, project, log, paragraphs, location, addQuote, validateProject, codePath, promptText, promptManifest, exportPrompt, stageExternalResults, verifyExternalProposal, decideExternalResult, csv, demoProject, updateResearchBank, mapScopeNodes, mapScopeLabel } from './domain.js';
-import { openDB, listProjects, saveProject, cloudMode, storageLabel, cloudCall, listPending, retryPending, discardPending, uploadOriginal, projectFileState, refreshProjectFileState, connectProjectFile, reconnectProjectFile } from './storage.js';
+import { openDB, listProjects, saveProject, storageLabel, projectFileState, refreshProjectFileState, connectProjectFile, reconnectProjectFile } from './storage.js';
 import { autoLayout, mapLayouts, scopedEdges, mapSignature, edgeGeometry } from './map-layout.js';
 import { codebookFormats, exportCodebook } from './codebook-export.js';
 import { version as appVersion } from '../package.json';
@@ -40,7 +40,6 @@ let undoProjectId;
 let undoAction = '';
 let noticeTimer;
 let captureSelection;
-let pendingCount = 0;
 let mapOrganizing = false;
 let mapConnecting = false;
 let mapSource;
@@ -52,7 +51,7 @@ let dirtyForm = false;
 let bookFormat = 'csv';
 let exportingBook = false;
 let incompatibleProjects = [];
-const localInstall = !cloudMode && import.meta.env.PROD;
+const localInstall = import.meta.env.PROD;
 const offlineSupported = localInstall && window.isSecureContext && 'serviceWorker' in navigator;
 const offlineLabels = {
   preparing: 'Preparando el uso sin conexión…',
@@ -63,7 +62,7 @@ const offlineLabels = {
 let offlineState = offlineSupported ? 'preparing' : 'unsupported';
 let installPrompt;
 let installed = window.matchMedia('(display-mode: standalone)').matches;
-const privacySummary = cloudMode ? 'Instalación privada · Drive y Sheets · Sin IA integrada.' : 'Sin IA integrada. Sin envío de entrevistas.';
+const privacySummary = 'Sin IA integrada. Sin envío de entrevistas.';
 const tabs = [['documents', 'Documentos'], ['book', 'Libro de códigos'], ['quotes', 'Citas e insertos'], ['map', 'Mapa de relaciones'], ['prompts', 'Prompts sin API'], ['review', 'Revisión externa'], ['history', 'Bitácora']];
 const findCode = id => current.codes.find(c => c.id === id);
 const findNode = id => [...current.categories, ...current.codes].find(c => c.id === id);
@@ -72,7 +71,7 @@ const activeResearch = () => (current.researchQuestions || []).filter(q => !q.ar
 const researchItems = () => activeResearch().map(q => ({id:q.id,name:`${q.kind}: ${q.text}`}));
 const researchText = quote => (current.researchQuestions || []).filter(q => (quote.researchQuestionIds || []).includes(q.id)).map(q => `${q.kind}: ${q.text}${q.archived?' (archivado)':''}`).join(' · ');
 const icon = shape => createElement(shape,{width:'16',height:'16',class:'ui-icon','aria-hidden':'true',focusable:'false'}).outerHTML;
-const actionIcons = {'new-project':Plus,'new-code':Plus,'new-category':Plus,'new-relation':Plus,'new-map':Plus,'backup':Download,'restore':Upload,'import-document':Upload,'paste-document':FileText,'edit-project':Settings2,'undo':Undo2,'help':HelpCircle,'close-dialog':X,'edit-code':Pencil,'edit-category':Pencil,'edit-quote':Pencil,'edit-relation':Pencil,'delete-quote':Trash2,'delete-relation':Trash2,'delete-map':Trash2,'export-book':Download,'export-quotes':Download,'export-report':Download,'export-map':Download,'export-map-png':Download,'download-prompt':Download,'copy-prompt':Copy,'organize-map':Network,'connect-map':Link2,'fit-map':Maximize2,'import-results':Upload,'choose-results':FolderOpen,'accept-result':Check,'reject-result':X,'result-source':FileText,'source':FileText,'cloud-panel':FolderOpen,'recovery':History,'load-prompt':FolderOpen,'open-map':FolderOpen,'save-map-window':Check,'close-map-window':X};
+const actionIcons = {'new-project':Plus,'new-code':Plus,'new-category':Plus,'new-relation':Plus,'new-map':Plus,'backup':Download,'restore':Upload,'import-document':Upload,'paste-document':FileText,'edit-project':Settings2,'undo':Undo2,'help':HelpCircle,'close-dialog':X,'edit-code':Pencil,'edit-category':Pencil,'edit-quote':Pencil,'edit-relation':Pencil,'delete-quote':Trash2,'delete-relation':Trash2,'delete-map':Trash2,'export-book':Download,'export-quotes':Download,'export-report':Download,'export-map':Download,'export-map-png':Download,'download-prompt':Download,'copy-prompt':Copy,'organize-map':Network,'connect-map':Link2,'fit-map':Maximize2,'import-results':Upload,'choose-results':FolderOpen,'accept-result':Check,'reject-result':X,'result-source':FileText,'source':FileText,'load-prompt':FolderOpen,'open-map':FolderOpen,'save-map-window':Check,'close-map-window':X};
 const button = (action, text, cls = '', attrs = '') => {
   const prefix = actionIcons[action] ? text.match(/^[+↑↓↶✓]\s*/)?.[0] || '' : '';
   return `<button type="button" class="${cls}" data-action="${action}" ${attrs} ${attrs.includes('title=')?'':`title="${e(text)}"`}>${actionIcons[action]?icon(actionIcons[action]):''}<span>${prefix?`<span class="sr-only">${prefix}</span>`:''}${text.slice(prefix.length)}</span></button>`;
@@ -95,7 +94,6 @@ function report(error) {
   notify(error.message || 'No se pudo completar la operación. Inténtalo otra vez y conserva un respaldo.', true);
 }
 function validateProjects(records) {
-  if (cloudMode) return records.map(validateProject);
   const valid = [], incompatible = [];
   for (const record of records) {
     try { valid.push(validateProject(record)); }
@@ -149,14 +147,8 @@ async function mutate(action, { recordUndo = true } = {}) {
       undoProjectId = undefined;
       undoAction = '';
     }
-    pendingCount = (await listPending()).length;
     render();
   } catch (error) {
-    if (cloudMode) {
-      pendingCount = (await listPending()).length;
-      render();
-      throw new Error(`No se confirmó el guardado en Drive. El intento se conserva en Recuperación local. ${error.message}`, { cause: error });
-    }
     throw new Error(`No se guardaron los cambios: ${error.message}`, { cause: error });
   } finally { saving = false; updateSaveState(); if (syncPending) refreshSyncedProject(); }
 }
@@ -165,7 +157,7 @@ function updateSaveState() {
   if(status) {
     const file = projectFileState(current?.id);
     const labels = { none:'Solo en este navegador · descarga un respaldo', saved:'Guardado en navegador y archivo', permission:'Archivo requiere permiso · cambios en navegador', pending:'Archivo pendiente · cambios en navegador', writing:'Actualizando archivo…', conflict:'Archivo modificado fuera de TRAMA-QDA', error:'Error al actualizar archivo · cambios en navegador' };
-    status.innerHTML=`<span class="local-dot"></span> ${saving ? 'Guardando cambios…' : cloudMode && pendingCount ? 'Hay intentos pendientes · Recuperación local' : cloudMode ? storageLabel() : labels[file.status]}`;
+    status.innerHTML=`<span class="local-dot"></span> ${saving ? 'Guardando cambios…' : labels[file.status]}`;
     status.title = file.message || '';
   }
 }
@@ -211,13 +203,13 @@ function render() {
       <label class="project-switch">Proyecto<select id="project-select">${options(projects, current.id)}</select></label>
       ${button('new-project', '+ Nuevo proyecto', 'new-project')}
       <nav aria-label="Espacios del proyecto">${tabs.map(([id, name]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'active' : ''}" ${tab === id ? 'aria-current="page"' : ''}><span aria-hidden="true">${icon(({documents:FileText,book:Tags,quotes:Quote,map:GitBranch,prompts:SquarePen,review:ClipboardCheck,history:History})[id])}</span>${name}${id === 'documents' ? `<small>${current.documents.length}</small>` : id === 'quotes' ? `<small>${current.quotes.length}</small>` : ''}</button>`).join('')}</nav>
-      <div class="rail-bottom"><p id="save-state" role="status"></p>${offlineIndicator()}<p class="rail-note">${privacySummary}</p>${incompatibleRecovery('quiet light')}${undoControl}${cloudMode ? button('cloud-panel','Drive, índices y versiones','rail-backup') + button('recovery',`Recuperación local (${pendingCount})`,'quiet light') : `<details class="file-actions"><summary>Archivo del proyecto .trama</summary><p>No edites el mismo archivo a la vez desde otra aplicación o equipo.</p>${button('connect-file','Guardar en archivo .trama','rail-backup')}${button('reconnect-file','Autorizar archivo conectado','quiet light')}${button('backup-trama','Descargar archivo .trama','quiet light')}</details>`}${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${installButton('quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
+      <div class="rail-bottom"><p id="save-state" role="status"></p>${offlineIndicator()}<p class="rail-note">${privacySummary}</p>${incompatibleRecovery('quiet light')}${undoControl}<details class="file-actions"><summary>Archivo del proyecto .trama</summary><p>No edites el mismo archivo a la vez desde otra aplicación o equipo.</p>${button('connect-file','Guardar en archivo .trama','rail-backup')}${button('reconnect-file','Autorizar archivo conectado','quiet light')}${button('backup-trama','Descargar archivo .trama','quiet light')}</details>${button('backup', '↓ Descargar respaldo', 'rail-backup')}${button('restore', 'Restaurar respaldo', 'quiet light')}${installButton('quiet light')}${button('help', 'Guía y privacidad', 'quiet light')}</div>
     </aside>
     <main>
       <header class="topbar"><div><h1>${e(current.name)}</h1><p>${e(current.question || 'Define tu pregunta de investigación en los ajustes del proyecto.')}</p></div>${button('edit-project', 'Ajustes', 'quiet')}</header>
       <div class="page-heading"><div><h2>${tabs.find(t => t[0] === tab)[1]}</h2><p>${({documents:'De la voz a la evidencia. Selecciona un fragmento y asígnale códigos.',book:'Define, organiza y afina tu interpretación sin perder el origen.',quotes:'Sigue el recorrido categoría → código → cita → documento.',map:'Abre uno o varios mapas en ventanas propias, conectadas en vivo con el proyecto.',prompts:'Preguntas elegidas, corpus acotado. Tú decides el alcance de cada solicitud.',review:'Propuestas externas y decisiones de revisión.',history:'Registro de cambios y solicitudes de este proyecto.'})[tab]}</p></div><div class="actions">${tabActions()}</div></div>
       <section id="workspace">${({documents:documentsView, book:bookView, quotes:quotesView, map:mapSelectorView, prompts:promptsView, review:reviewView, history:historyView})[tab]()}</section>
-      <footer class="workspace-footer">TRAMA-QDA · ${cloudMode ? 'Drive privado' : 'Trabajo local'}, interpretación humana.<span>${current.codes.length} códigos · ${current.categories.length} categorías · ${current.quotes.length} citas</span></footer>
+      <footer class="workspace-footer">TRAMA-QDA · Trabajo local, interpretación humana.<span>${current.codes.length} códigos · ${current.categories.length} categorías · ${current.quotes.length} citas</span></footer>
     </main></div>`;
   if (tab === 'documents') setupSelection();
   if (tab === 'prompts') setupPrompt();
@@ -232,7 +224,7 @@ function tabActions() {
   return '';
 }
 function welcome() {
-  app.innerHTML = `<main class="welcome"><header class="welcome-header"><div class="brand dark">${brand}</div><div class="welcome-release"><span>Versión <b>${e(appVersion)}</b></span>${button('release-notes', 'Novedades', '', 'aria-haspopup="dialog" aria-controls="release-dialog"')}<div class="welcome-credit"><strong>Dr. Esteban Cofré-Morales</strong><br>Departamento de Ciencias Sociales y Humanidades<br>Universidad de Aysén<br><br><small>Aplicación desarrollada con fines educativos e investigativos<br>Asistida por GitHub Copilot</small></div></div></header><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. Mantén la trazabilidad desde la categoría hasta la cita original. ${cloudMode ? 'Instalación privada con Drive y Sheets, sin IA integrada.' : 'Sin IA integrada y sin subir tu corpus.'}</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}${installButton()}</div><p class="muted">El ejemplo contiene solo datos ficticios para explorar.</p>${offlineIndicator()}</div><div><div class="trace-preview"><h2>Cómo funciona TRAMA-QDA</h2><ol><li><small>Importa entrevistas</small>DOCX, TXT o pega transcripciones directamente</li><li><small>Selecciona fragmentos</small>Define códigos inductivos o deductivos con definiciones</li><li><small>Vincula evidencia</small>Cada cita conserva su ubicación exacta y contexto</li><li><small>Organiza jerarquías</small>Agrupa códigos en categorías y conecta relaciones</li><li><small>Exporta con trazabilidad</small>CSV, mapas SVG, insertos HTML. Las citas se remontan a su origen</li><li><small>Prepara solicitudes</small>Extrae prompts acotados sin enviar el corpus a servicios externos</li></ol></div><div style="margin-top: 30px; padding: 20px; background: #f8fafb; border-radius: 5px; border: 1px solid var(--line);"><h3 style="margin-top: 0; font-size: 14px; color: var(--ink);">Características principales</h3><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">📋 <strong>Libro de códigos</strong> con definiciones, criterios de inclusión/exclusión y colores personalizados</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">🗺️ <strong>Mapas de relaciones</strong> interactivos con arrastrar, zoom y autoorganización ELK</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">📊 <strong>Matriz de citas</strong> filtrable por código, categoría, pregunta u objetivo</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">🔍 <strong>Búsqueda y recuperación</strong> de evidencia con memos analíticos y referencias de origen</p></div></div></div><div class="privacy-strip"><strong>${cloudMode ? 'Los proyectos se guardan en tu Drive privado.' : 'Tus datos se quedan en este navegador.'}</strong><p>${cloudMode ? 'Cada guardado confirmado crea una versión completa en Drive. Sheets contiene índices regenerables. Los intentos sin confirmación se conservan en este navegador para recuperarlos. Mantén también respaldos JSON descargados.' : 'No hay cuentas, sincronización ni servidores externos. Descarga respaldos JSON en tu dispositivo: borrar los datos del navegador elimina los proyectos locales.'} Los prompts se preparan localmente; tú decides si copiarlos en un chat externo. Revisa anonimización y consentimientos antes de compartir con IA externa.</p><div class="actions">${incompatibleRecovery()}${button('restore', 'Restaurar un respaldo')}${cloudMode ? button('recovery',`Recuperación local (${pendingCount})`) : ''}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></div></main>`;
+  app.innerHTML = `<main class="welcome"><header class="welcome-header"><div class="brand dark">${brand}</div><div class="welcome-release"><span>Versión <b>${e(appVersion)}</b></span>${button('release-notes', 'Novedades', '', 'aria-haspopup="dialog" aria-controls="release-dialog"')}<div class="welcome-credit"><strong>Dr. Esteban Cofré-Morales</strong><br>Departamento de Ciencias Sociales y Humanidades<br>Universidad de Aysén<br><br><small>Aplicación desarrollada con fines educativos e investigativos<br>Asistida por GitHub Copilot</small></div></div></header><div class="welcome-grid"><div><h1>Tu interpretación.<br>Su evidencia.</h1><p class="lead">Un espacio de análisis cualitativo para leer, codificar y conectar entrevistas. Mantén la trazabilidad desde la categoría hasta la cita original. Sin IA integrada y sin subir tu corpus.</p><div class="actions">${button('new-project', 'Crear mi proyecto', 'primary')}${button('demo', 'Explorar un ejemplo')}${installButton()}</div><p class="muted">El ejemplo contiene solo datos ficticios para explorar.</p>${offlineIndicator()}</div><div><div class="trace-preview"><h2>Cómo funciona TRAMA-QDA</h2><ol><li><small>Importa entrevistas</small>DOCX, TXT o pega transcripciones directamente</li><li><small>Selecciona fragmentos</small>Define códigos inductivos o deductivos con definiciones</li><li><small>Vincula evidencia</small>Cada cita conserva su ubicación exacta y contexto</li><li><small>Organiza jerarquías</small>Agrupa códigos en categorías y conecta relaciones</li><li><small>Exporta con trazabilidad</small>CSV, mapas SVG, insertos HTML. Las citas se remontan a su origen</li><li><small>Prepara solicitudes</small>Extrae prompts acotados sin enviar el corpus a servicios externos</li></ol></div><div style="margin-top: 30px; padding: 20px; background: #f8fafb; border-radius: 5px; border: 1px solid var(--line);"><h3 style="margin-top: 0; font-size: 14px; color: var(--ink);">Características principales</h3><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">📋 <strong>Libro de códigos</strong> con definiciones, criterios de inclusión/exclusión y colores personalizados</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">🗺️ <strong>Mapas de relaciones</strong> interactivos con arrastrar, zoom y autoorganización ELK</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">📊 <strong>Matriz de citas</strong> filtrable por código, categoría, pregunta u objetivo</p><p style="margin: 8px 0; font-size: 13px; color: var(--muted);">🔍 <strong>Búsqueda y recuperación</strong> de evidencia con memos analíticos y referencias de origen</p></div></div></div><div class="privacy-strip"><strong>Tus datos se guardan en este navegador. Descárgalos regularmente.</strong><p>No hay cuentas, sincronización ni servidores externos. Descarga respaldos JSON en tu dispositivo: borrar los datos del navegador elimina los proyectos locales. Los prompts se preparan localmente; tú decides si copiarlos en un chat externo. Revisa anonimización y consentimientos antes de compartir con IA externa.</p><div class="actions">${incompatibleRecovery()}${button('restore', 'Restaurar un respaldo')}${projects.length ? button('resume', 'Volver a mis proyectos') : ''}</div></div></main>`;
 }
 function showReleaseNotes() {
   releaseDialog.querySelector('.release-history').innerHTML = releaseNotes.map(({version, changes}) =>
@@ -300,7 +292,7 @@ function setupSelection() {
       await mutate(p => addQuote(p, selection.documentId, selection.start, selection.end, form.getAll('codeIds'), form.get('memo').trim(),form.getAll('researchQuestionIds')));
       selection = null;
       render();
-      notify(cloudMode ? 'Cita y códigos confirmados en Drive.' : 'Cita y códigos guardados en este navegador.');
+      notify('Cita y códigos guardados en este navegador.');
     } catch (error) { report(error); }
   });
 }
@@ -359,7 +351,7 @@ function categoryDialog(id) {
 }
 function projectDialog(edit = false) {
   const bank=edit?activeResearch():[];
-  modal(edit ? 'Ajustes del proyecto' : 'Crear proyecto', `${input('Nombre del proyecto','name',edit ? current.name : '',true)}${textarea('Pregunta u objetivo de investigación','question',edit ? current.question : '')}${textarea('Banco de preguntas (una por línea)','researchQuestions',bank.filter(q=>q.kind==='Pregunta').map(q=>q.text).join('\n'),4)}${textarea('Banco de objetivos (uno por línea)','researchObjectives',bank.filter(q=>q.kind==='Objetivo').map(q=>q.text).join('\n'),4)}<p class="muted">Registrar el banco completo no lo envía a la IA. Selecciona después los elementos pertinentes en cada prompt y cita. Quitar o reformular un elemento archiva su versión anterior para conservar referencias.</p><p class="muted">${cloudMode ? 'Los proyectos se guardan en tu Drive privado. Los intentos pendientes quedan en este navegador. Conserva también respaldos JSON.' : 'Los datos se guardan en este navegador. No uses modo incógnito y conserva respaldos fuera del equipo.'}</p>`, async form => {
+  modal(edit ? 'Ajustes del proyecto' : 'Crear proyecto', `${input('Nombre del proyecto','name',edit ? current.name : '',true)}${textarea('Pregunta u objetivo de investigación','question',edit ? current.question : '')}${textarea('Banco de preguntas (una por línea)','researchQuestions',bank.filter(q=>q.kind==='Pregunta').map(q=>q.text).join('\n'),4)}${textarea('Banco de objetivos (uno por línea)','researchObjectives',bank.filter(q=>q.kind==='Objetivo').map(q=>q.text).join('\n'),4)}<p class="muted">Registrar el banco completo no lo envía a la IA. Selecciona después los elementos pertinentes en cada prompt y cita. Quitar o reformular un elemento archiva su versión anterior para conservar referencias.</p><p class="muted">Los datos se guardan en este navegador. No uses modo incógnito y conserva respaldos fuera del equipo.</p>`, async form => {
     const name = form.get('name').trim();
     if (!name) throw new Error('Escribe un nombre para el proyecto.');
     if (edit) await mutate(p => { p.name = name; p.question = form.get('question').trim(); updateResearchBank(p,form.get('researchQuestions'),form.get('researchObjectives')); log(p,'Proyecto y banco de investigación actualizados',JSON.stringify({name,researchQuestions:p.researchQuestions})); });
@@ -390,12 +382,11 @@ async function importDocument() {
     else throw new Error('Formato no admitido. Importa TXT UTF-8 o DOCX.');
     text = text.replace(/\r\n?/g,'\n').replace(/\u0000/g,'');
     if (!text.trim()) throw new Error(`${file.name} no contiene texto legible. Si es un escaneo, necesita OCR antes de importarlo.`);
-    const originalFileId = await uploadOriginal(file);
-    docs.push({ id:uid(), name:file.name, text, createdAt:now(), ...(originalFileId ? { originalFileId } : {}) });
+    docs.push({ id:uid(), name:file.name, text, createdAt:now() });
   }
   await mutate(p => { p.documents.push(...docs); docs.forEach(d => log(p,'Documento importado',d.name)); });
   docId = docs[0].id; selection = null; render();
-  notify(cloudMode ? `${docs.length} documento(s) confirmados en Drive, con su archivo original.` : `${docs.length} documento(s) importado(s). El texto se guarda localmente.`);
+  notify(`${docs.length} documento(s) importado(s). El texto se guarda localmente.`);
 }
 function chooseFiles(accept, multiple = false) {
   return new Promise(resolve => {
@@ -755,7 +746,7 @@ function promptsView() {
     <div id="scope-quotes" class="scope-panel"><label>Mostrar citas de un código<select id="prompt-code-filter">${options(current.codes,'','Todos')}</select></label>${checklist('quoteIds',current.quotes.map(q=>({id:q.id,name:`${location(current,q)}: ${q.text.slice(0,150)}`})))}</div>
     <details><summary>Libro de códigos incluido en el prompt</summary><p class="muted">Incluye solo lo pertinente. En deductiva debes seleccionar al menos un código.</p>${checklist('codeIds',current.codes)}</details>
     <label>Máximo de códigos nuevos propuestos<input type="number" name="budget" value="5" min="0" max="50" required></label><p class="muted">Límite de revisión, no cuota metodológica. Se permiten cero propuestas. En deductiva no se autoriza crear códigos.</p><button class="primary full" type="submit">Preparar prompt y guardar solicitud</button>
-    </form><div class="prompt-output"><div class="output-heading"><h3>Paquete para un chat externo</h3>${button('copy-prompt','Copiar', '',lastPrompt?'':'disabled')}<label>Formato de exportación<select id="prompt-format"><option value="json">JSON</option><option value="txt">TXT</option><option value="md">Markdown (.md)</option></select></label>${button('download-prompt','↓ Exportar prompt','quiet',lastPrompt?'':'disabled')}</div><p class="privacy-note">${cloudMode ? 'El paquete se archiva en tu Drive, pero no se envía a ninguna IA.' : 'Preparar no envía nada.'} Revisa y anonimiza antes de copiar. Una suscripción de chat no equivale a una API privada.</p><label><span class="sr-only">Prompt generado</span><textarea id="prompt-output" readonly placeholder="Tu solicitud aparecerá aquí, con instrucciones y referencias de origen.">${e(lastPrompt)}</textarea></label><p id="prompt-size" class="muted">${lastPrompt ? `${lastPrompt.length.toLocaleString('es-CL')} caracteres · no es un conteo de tokens` : 'No se ha preparado ninguna solicitud en esta sesión.'}</p><details><summary>Solicitudes guardadas (${current.prompts.length})</summary>${current.prompts.slice().reverse().map(r=>`<div class="prompt-record"><strong>${e(r.question)}</strong><small>${new Date(r.createdAt).toLocaleString('es-CL')} · ${e(r.operation)} · ${e(r.mode)} · ${r.externalMaterial ? 'Sin texto del corpus' : 'Contiene texto del corpus'}</small>${button('load-prompt','Abrir paquete','quiet',`data-id="${r.id}"`)}</div>`).join('') || '<p class="muted">Sin solicitudes guardadas.</p>'}</details></div></div>`;
+    </form><div class="prompt-output"><div class="output-heading"><h3>Paquete para un chat externo</h3>${button('copy-prompt','Copiar', '',lastPrompt?'':'disabled')}<label>Formato de exportación<select id="prompt-format"><option value="json">JSON</option><option value="txt">TXT</option><option value="md">Markdown (.md)</option></select></label>${button('download-prompt','↓ Exportar prompt','quiet',lastPrompt?'':'disabled')}</div><p class="privacy-note">Preparar no envía nada. Revisa y anonimiza antes de copiar. Una suscripción de chat no equivale a una API privada.</p><label><span class="sr-only">Prompt generado</span><textarea id="prompt-output" readonly placeholder="Tu solicitud aparecerá aquí, con instrucciones y referencias de origen.">${e(lastPrompt)}</textarea></label><p id="prompt-size" class="muted">${lastPrompt ? `${lastPrompt.length.toLocaleString('es-CL')} caracteres · no es un conteo de tokens` : 'No se ha preparado ninguna solicitud en esta sesión.'}</p><details><summary>Solicitudes guardadas (${current.prompts.length})</summary>${current.prompts.slice().reverse().map(r=>`<div class="prompt-record"><strong>${e(r.question)}</strong><small>${new Date(r.createdAt).toLocaleString('es-CL')} · ${e(r.operation)} · ${e(r.mode)} · ${r.externalMaterial ? 'Sin texto del corpus' : 'Contiene texto del corpus'}</small>${button('load-prompt','Abrir paquete','quiet',`data-id="${r.id}"`)}</div>`).join('') || '<p class="muted">Sin solicitudes guardadas.</p>'}</details></div></div>`;
 }
 function setupPrompt() {
   const scope=document.querySelector('#prompt-scope');
@@ -830,10 +821,6 @@ function historyView() {
   return `<div class="history-list"><p class="muted">Las acciones se registran con la hora del equipo. Deshacer revierte el último cambio solo durante esta sesión; la bitácora conserva la acción y su reversión. Los respaldos JSON incluyen la bitácora completa.</p>${current.history.slice().reverse().map(h=>`<article><time datetime="${e(h.at)}">${e(new Date(h.at).toLocaleString('es-CL'))}</time><div><strong>${e(h.action)}</strong><p>${e(h.detail)}</p></div></article>`).join('') || empty('Sin cambios todavía','Las acciones del proyecto aparecerán aquí.')}</div>`;
 }
 function help() {
-  if(cloudMode) {
-    modal('Guía de la instalación privada', `<div class="help"><h3>Drive es el almacenamiento principal</h3><p>Cada guardado confirmado crea un archivo JSON completo e inmutable. La hoja Proyectos apunta a la versión vigente. Los documentos importados también conservan su original en Drive. No compartas la carpeta, la hoja ni los archivos.</p><h3>Sheets es un índice, no el editor</h3><p>En «Drive, índices y versiones», actualiza los índices después de trabajar. Las pestañas Documentos, Categorias, Codigos, Citas, Relaciones y Bitacora son proyecciones regenerables. No edites Proyectos ni uses las hojas para cambiar la codificación.</p><h3>Recuperación y conflictos</h3><p>Si falla una conexión, el intento completo queda en este navegador. En Recuperación local puedes descargarlo, reintentarlo con el mismo identificador o guardarlo como proyecto nuevo. Un conflicto nunca sobrescribe silenciosamente otro equipo. Antes de cerrar, espera la confirmación de Drive.</p><h3>Versiones</h3><p>Descarga versiones anteriores desde «Drive, índices y versiones». Para revisarlas sin reemplazar el proyecto actual, restáuralas como copias independientes. También puedes conservar respaldos JSON fuera de Google.</p><h3>Análisis y prompts</h3><p>El flujo de códigos, categorías, citas, memos, mapas e insertos funciona como en la versión local. Los prompts se archivan en Drive, sin enviarse a una IA. Revisa anonimización y consentimientos antes de copiarlos a un chat.</p><h3>Límites</h3><p>Solo PC. Máximo 8 MB de JSON por proyecto y 8 MB por archivo original. Las cuotas de Google pueden interrumpir operaciones. Las versiones consumen espacio y no se purgan automáticamente. Es una instalación personal, no un sistema colaborativo. Las copias pendientes del navegador y los JSON descargados no están cifrados por TRAMA-QDA.</p></div>`,async()=>{},'Entendido');
-    return;
-  }
   modal('Guía de uso y privacidad',`<div class="help"><h3>Corpus y codificación</h3><p>Importa TXT UTF-8, DOCX o pega texto. Se conserva el texto extraído, no páginas ni formato del Word. Selecciona fragmentos en Documentos y asigna códigos desde el inspector lateral. Usa definiciones, criterios y memos para registrar decisiones.</p><h3>Evidencia y relaciones</h3><p>Las citas conservan su documento, párrafos y posiciones. Puedes consultarlas por código, categoría o pregunta, volver al origen y exportar CSV, HTML o mapas SVG. Las relaciones dirigidas requieren citas o fundamento interpretativo.</p><h3>Prompts y revisión externa</h3><p>Los nuevos prompts excluyen por defecto el texto del corpus y se exportan en JSON, TXT o Markdown. Adjunta los originales directamente en el chat externo y conserva los IDs del contrato. Importa únicamente respuestas JSON vinculadas a una solicitud de este proyecto. En Revisión externa puedes aceptar, rechazar o consultar el origen. Las citas deben coincidir literalmente y estar dentro del alcance autorizado; las citas repetidas requieren offsets exactos.</p><p>La autovalidación está desactivada por defecto en cada importación. Al activarla, se aceptan solo propuestas verificables; no se evalúa la pertinencia metodológica. Los bloqueos nunca se omiten. Categorías, jerarquías y fusiones sugeridas en memos se deciden manualmente en el libro.</p><h3>Privacidad y respaldos</h3><p>No hay llamadas a IA ni envío automático de entrevistas. Los originales que adjuntes al chat quedan sujetos a sus condiciones: anonimiza y revisa consentimientos. Los proyectos locales usan IndexedDB; borrar datos del sitio o cambiar de dispositivo puede hacerlos inaccesibles. Descarga respaldos JSON sin cifrar y consérvalos de forma segura. Restaurar crea una copia independiente y requiere nuevos prompts para nuevas importaciones externas. No hay edición colaborativa, OCR ni importación propietaria de ATLAS.ti; no estamos afiliados a ATLAS.ti.</p></div>`,async()=>{},'Entendido');
 }
 async function restore() {
@@ -853,32 +840,6 @@ async function restoreFile(file) {
   log(restored,'Respaldo restaurado',`Archivo: ${file.name}`);
   const saved = await saveProject(restored); projects.push(saved); current=saved; resetView(); render();
   notify('Respaldo restaurado como proyecto independiente.');
-}
-async function recoveryPanel() {
-  const pending = await listPending();
-  pendingCount = pending.length;
-  modal('Recuperación local', `<p>Estos intentos todavía no tienen confirmación local. Google podría haberlos recibido. Reintentar usa el mismo ID para evitar duplicados. Si otra versión ya avanzó, descarga el intento o guárdalo como copia.</p>${pending.map(item=>`<article><h3>${e(item.project.name)}</h3><p class="muted">${e(new Date(item.createdAt).toLocaleString('es-CL'))} · intento ${e(item.id)}</p><div class="actions">${button('download-pending','↓ JSON','',`data-id="${item.id}"`)}${button('retry-pending','Reintentar confirmación','',`data-id="${item.id}"`)}${button('copy-pending','Guardar como proyecto nuevo','',`data-id="${item.id}"`)}${button('discard-pending','Descartar intento','quiet danger',`data-id="${item.id}"`)}</div></article>`).join('') || '<p>No hay intentos pendientes en este navegador.</p>'}`,async()=>{},'Cerrar');
-}
-async function cloudPanel() {
-  const info = await cloudCall('getCloudInfo');
-  const versions = current ? await cloudCall('listCloudVersions',current.id) : [];
-  const safeGoogleLink = (url, label) => {
-    const parsed = new URL(url);
-    if(parsed.protocol!=='https:' || !['drive.google.com','docs.google.com'].includes(parsed.hostname)) throw new Error('Google devolvió un enlace inesperado.');
-    return `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;
-  };
-  modal('Drive, índices y versiones', `<p>${safeGoogleLink(info.folderUrl,'Abrir carpeta privada de Drive')} · ${safeGoogleLink(info.spreadsheetUrl,'Abrir índices de Sheets')}</p><h3>Índices consultables</h3><p>Drive conserva siempre la versión completa. Las pestañas de Sheets se regeneran a petición, para no bloquear cada codificación con múltiples escrituras. No edites la hoja Proyectos.</p>${button('rebuild-indexes','Actualizar índices de Sheets','primary')}<h3>Versiones de este proyecto (${versions.length})</h3><p class="muted">Cada guardado genera una versión. Descarga una anterior y restáurala como copia si necesitas recuperarla.</p>${versions.map(v=>`<div class="prompt-record"><strong>${e(new Date(v.createdAt).toLocaleString('es-CL'))} ${v.current?'· vigente':''}</strong>${button('download-version','↓ Descargar JSON','quiet',`data-id="${e(v.id)}"`)}</div>`).join('')}`,async()=>{},'Cerrar');
-}
-async function getPending(id) {
-  const pending = (await listPending()).find(p=>p.id===id);
-  if(!pending) throw new Error('Este intento ya fue resuelto.');
-  return pending;
-}
-async function refreshCloud(saved) {
-  projects = await listProjects();
-  current = projects.find(p=>p.id===saved.id);
-  pendingCount = (await listPending()).length;
-  dialog.close(); resetView(); render();
 }
 function showSource(id) {
   const q=current.quotes.find(q=>q.id===id);
@@ -902,17 +863,13 @@ async function undoLastAction() {
       log(project, 'Cambio deshecho', `Se revirtió: ${action}`);
     }, { recordUndo: false });
   } catch (error) {
-    if (!cloudMode) {
-      undoSnapshot = previousUndo.snapshot;
-      undoProjectId = previousUndo.projectId;
-      undoAction = previousUndo.action;
-      render();
-    }
+    undoSnapshot = previousUndo.snapshot;
+    undoProjectId = previousUndo.projectId;
+    undoAction = previousUndo.action;
+    render();
     throw error;
   }
-  notify(cloudMode
-    ? 'Cambio revertido en una nueva versión de Drive; los originales y versiones previas se conservan.'
-    : 'Último cambio del proyecto deshecho.');
+  notify('Último cambio del proyecto deshecho.');
 }
 const actions = {
   'home':()=>{current=undefined;welcome();},
@@ -949,21 +906,6 @@ const actions = {
   'connect-file':async()=>{try {await connectProjectFile(current,`${fileName(current.name)}.trama`);} catch(error) {if(error.name !== 'AbortError') throw error;}},
   'reconnect-file':async()=>{await reconnectProjectFile(current);},
   'restore':restore,'help':help,
-  'recovery':recoveryPanel, 'cloud-panel':cloudPanel,
-  'download-pending':async id=>{const item=await getPending(id);download(`${fileName(item.project.name)}-pendiente.json`,JSON.stringify(item.project,null,2),'application/json');},
-  'retry-pending':async id=>{const saved=await retryPending(id);await refreshCloud(saved);notify('Google confirmó la versión. El intento local quedó resuelto.');},
-  'copy-pending':async id=>{const item=await getPending(id);const copy=structuredClone(item.project);copy.id=uid();copy.name+=' (recuperado)';log(copy,'Intento recuperado como copia',id);const saved=await saveProject(copy);await discardPending(id);await refreshCloud(saved);notify('La copia quedó guardada en Drive sin reemplazar el proyecto original.');},
-  'discard-pending':async id=>{
-    const item=await getPending(id);
-    dialog.close();
-    modal('Descartar intento local',`<p>Se eliminará únicamente el intento pendiente de ${e(item.project.name)}. No modifica Drive. Descarga su JSON antes si necesitas conservarlo.</p>`,async()=>{await discardPending(id);pendingCount=(await listPending()).length;render();},'Descartar intento');
-  },
-  'rebuild-indexes':async()=>{
-    const control=dialog.querySelector('[data-action=rebuild-indexes]');control.disabled=true;
-    try {const result=await cloudCall('rebuildCloudIndexes');notify(`Índices de ${result.projects} proyecto(s) actualizados en Sheets.`);}
-    finally {control.disabled=false;}
-  },
-  'download-version':async id=>{const p=await cloudCall('getCloudVersion',current.id,id);validateProject(p);download(`${fileName(p.name)}-version-${p.updatedAt.slice(0,10)}.json`,JSON.stringify(p,null,2),'application/json');},
   'export-book':async()=>{
     const format = bookFormat;
     const name = `${fileName(current.name)}-libro.${format}`;
@@ -1051,20 +993,14 @@ window.addEventListener('beforeunload',event=>{
 async function start() {
   try {
     await openDB();
-    pendingCount = (await listPending()).length;
     projects=validateProjects(await listProjects());
     projects.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     current=projects[0];render();
     if (incompatibleProjects.length) notify('Hay proyectos locales incompatibles. No se borraron; descarga una copia de recuperación.', true);
-    if (!cloudMode) {
-      await Promise.all(projects.map(project => refreshProjectFileState(project).catch(report)));
-      if (navigator.storage?.persist) navigator.storage.persist().catch(error => console.error('No se pudo solicitar almacenamiento persistente:', error));
-    }
+    await Promise.all(projects.map(project => refreshProjectFileState(project).catch(report)));
+    if (navigator.storage?.persist) navigator.storage.persist().catch(error => console.error('No se pudo solicitar almacenamiento persistente:', error));
   } catch(error) {
     app.innerHTML='<main class="welcome"><h1>No se pudo abrir el almacenamiento local</h1><p>No borres los datos del sitio. Prueba abrirlo en el navegador habitual, con almacenamiento permitido y fuera del modo incógnito.</p><button type="button" onclick="location.reload()">Reintentar</button></main>';
-    if(cloudMode) {
-      app.innerHTML='<main class="welcome"><h1>No se pudo abrir Drive privado</h1><p>Comprueba la conexión y la cuenta Google propietaria. No borres los datos locales: pueden contener cambios pendientes.</p><div class="actions"><button type="button" onclick="location.reload()">Reintentar conexión</button><button type="button" data-action="recovery">Recuperación local</button></div></main>';
-    }
     report(error);
   }
 }
@@ -1122,7 +1058,7 @@ async function refreshSyncedProject() {
     const updated = refreshed.find(p => p.id === id);
     if (!updated || updated.updatedAt === current?.updatedAt) return;
     current = validateProject(updated);
-    if (!cloudMode) await refreshProjectFileState(current);
+    await refreshProjectFileState(current);
     undoSnapshot = undefined;
     undoProjectId = undefined;
     undoAction = '';

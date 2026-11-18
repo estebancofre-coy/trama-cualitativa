@@ -1,7 +1,5 @@
 node_modules/
 dist/
-dist-apps-script/
-.clasp.json
 test-results/
 playwright-report/
 .local-checkpoints/
