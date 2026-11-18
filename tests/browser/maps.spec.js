@@ -122,8 +122,11 @@ test('legacy backups create scoped category, question and empty objective maps',
   await expect(objective.locator('#relation-map')).toBeVisible();
   await expect(objective.locator('.map-node')).toHaveCount(2);
   await expect(objective.getByRole('button',{name:'↓ Mapa SVG'})).toBeEnabled();
-  await objective.getByRole('button',{name:'Cerrar ventana',exact:true}).click();
-  await expect.poll(()=>objective.isClosed()).toBe(true);
+  const closed=objective.waitForEvent('close');
+  await objective.getByRole('button',{name:'Cerrar ventana',exact:true}).click().catch(error=>{
+    if(!objective.isClosed()) throw error;
+  });
+  await closed;
   await page.getByRole('button',{name:'Mapa de relaciones',exact:true}).click();
   const pending=page.waitForEvent('popup');
   await page.locator('.map-card').filter({hasText:'Objetivo sin citas'}).getByRole('button',{name:'Abrir mapa'}).click();
